@@ -83,7 +83,12 @@ const server = createServer(async (incoming, outgoing) => {
     };
     if (init.body) init.duplex = "half";
 
-    const response = await worker.fetch(new Request(requestUrl, init), env, executionContext);
+    const request = new Request(requestUrl, init);
+    const pathname = new URL(requestUrl).pathname;
+    const assetResponse = pathname === "/" ? null : await fetchAsset(request);
+    const response = assetResponse && assetResponse.status !== 404
+      ? assetResponse
+      : await worker.fetch(request, env, executionContext);
     outgoing.statusCode = response.status;
     outgoing.statusMessage = response.statusText;
     response.headers.forEach((value, key) => outgoing.setHeader(key, value));
@@ -111,4 +116,3 @@ server.listen(port, host, () => {
   if (localAddress) console.log(`  Same Wi-Fi: http://${localAddress}:${port}`);
   console.log("\nPress Control+C to stop.\n");
 });
-
