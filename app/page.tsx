@@ -17,6 +17,7 @@ import {
   Info,
   Languages,
   Layers3,
+  Microscope,
   Play,
   Search,
   ShieldCheck,
@@ -33,12 +34,13 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { alloyPresets, calculateSystem, dataPacks, sources, systems } from "./data";
+import { alloyPresets, calculatePoint, calculateSystem, dataPacks, sources, systems } from "./data";
 
-type View = "workspace" | "database" | "method";
+type View = "workspace" | "database" | "coverage" | "method";
 type ResultView = "plot" | "table";
 type Language = "en" | "fa";
 type WorkflowStep = "system" | "model" | "plot" | "table";
+type CalculatorMode = "one-axis" | "single-point" | "solidification";
 
 type ElementRecord = {
   atomicNumber: number;
@@ -56,6 +58,7 @@ const copy = {
   en: {
     workspace: "Workspace",
     database: "Data library",
+    coverage: "Coverage",
     method: "Method & sources",
     run: "Run calculation",
     calculating: "Calculating…",
@@ -73,6 +76,7 @@ const copy = {
   fa: {
     workspace: "محیط محاسبه",
     database: "کتابخانه داده",
+    coverage: "پوشش امکانات",
     method: "روش و منابع",
     run: "اجرای محاسبه",
     calculating: "در حال محاسبه…",
@@ -88,6 +92,26 @@ const copy = {
     projects: "روند پروژه",
   },
 };
+
+const calculatorModes: { id: CalculatorMode; label: string; description: string }[] = [
+  { id: "one-axis", label: "One-axis", description: "36-point temperature sweep" },
+  { id: "single-point", label: "Single point", description: "Phase weights at one state" },
+  { id: "solidification", label: "Solidification proxy", description: "Cooling-window exploration" },
+];
+
+const capabilityBenchmark = [
+  { capability: "Single equilibrium", official: "Built-in calculator", iran: "Working educational model", status: "working" },
+  { capability: "One-axis calculation", official: "Built-in calculator", iran: "Working · plot, table, exports", status: "working" },
+  { capability: "Grid calculation", official: "Built-in calculator", iran: "Roadmap", status: "roadmap" },
+  { capability: "Phase diagram", official: "Built-in calculator", iran: "Roadmap · boundary solver needed", status: "roadmap" },
+  { capability: "Scheil solidification", official: "Built-in calculator", iran: "Cooling-path proxy only", status: "proxy" },
+  { capability: "Property models", official: "Built-in + model libraries", iran: "Roadmap", status: "roadmap" },
+  { capability: "Material-to-material", official: "Built-in calculator", iran: "Not implemented", status: "data" },
+  { capability: "Aqueous / Pourbaix", official: "Built-in calculators", iran: "Not implemented", status: "data" },
+  { capability: "Parameter optimization", official: "PARROT module", iran: "Not implemented", status: "data" },
+  { capability: "Diffusion & precipitation", official: "DICTRA / TC-PRISMA add-ons", iran: "External solver + assessed data required", status: "data" },
+  { capability: "Programmable SDK", official: "Python, MATLAB and TQ APIs", iran: "CSV/JSON now · API roadmap", status: "roadmap" },
+] as const;
 
 function BrandMark() {
   return (
@@ -106,6 +130,8 @@ export default function Home() {
   const [composition, setComposition] = useState(0.4);
   const [tempMin, setTempMin] = useState(400);
   const [tempMax, setTempMax] = useState(1600);
+  const [probeTemperature, setProbeTemperature] = useState(900);
+  const [calculatorMode, setCalculatorMode] = useState<CalculatorMode>("one-axis");
   const pressure = 1;
   const [resultView, setResultView] = useState<ResultView>("plot");
   const [isRunning, setIsRunning] = useState(false);
@@ -115,6 +141,8 @@ export default function Home() {
     composition: 0.4,
     tempMin: 400,
     tempMax: 1600,
+    probeTemperature: 900,
+    mode: "one-axis" as CalculatorMode,
     pressure: 1,
   });
   const [query, setQuery] = useState("");
@@ -130,16 +158,38 @@ export default function Home() {
   const selectedPack = dataPacks.find((item) => item.code === selectedPackCode) ?? dataPacks[0];
   const compositionStep = system.maxComposition === 6.67 ? 0.01 : system.maxComposition > 50 ? 1 : 0.05;
   const invalidRange = tempMax <= tempMin || tempMin < system.tempMin || tempMax > system.tempMax;
+  const invalidPoint = probeTemperature < system.tempMin || probeTemperature > system.tempMax;
+  const invalidInput = calculatorMode === "single-point" ? invalidPoint : invalidRange;
   const isDirty =
     systemId !== runConfig.systemId ||
     composition !== runConfig.composition ||
     tempMin !== runConfig.tempMin ||
     tempMax !== runConfig.tempMax ||
+    probeTemperature !== runConfig.probeTemperature ||
+    calculatorMode !== runConfig.mode ||
     pressure !== runConfig.pressure;
   const chartData = useMemo(
     () => calculateSystem(runConfig.systemId, runConfig.composition, runConfig.tempMin, runConfig.tempMax),
     [runConfig],
   );
+  const pointResult = useMemo(
+    () => calculatePoint(runConfig.systemId, runConfig.composition, runConfig.probeTemperature),
+    [runConfig.systemId, runConfig.composition, runConfig.probeTemperature],
+  );
+  const solidificationMetrics = useMemo(() => {
+    const liquidKey = resultSystem.phases.find((phase) => phase.key === "liquid")?.key;
+    if (!liquidKey) return null;
+    const firstLiquid = chartData.find((row) => (row[liquidKey] ?? 0) > 0.01);
+    const fullyLiquid = chartData.find((row) => (row[liquidKey] ?? 0) >= 0.99);
+    const lastPoint = chartData[0];
+    const solidAtMinimum = 1 - (lastPoint?.[liquidKey] ?? 0);
+    return {
+      incipientLiquid: firstLiquid?.temperature ?? null,
+      fullyLiquid: fullyLiquid?.temperature ?? null,
+      interval: firstLiquid && fullyLiquid ? fullyLiquid.temperature - firstLiquid.temperature : null,
+      solidAtMinimum,
+    };
+  }, [chartData, resultSystem]);
 
   const filteredElements = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -170,7 +220,13 @@ export default function Home() {
     setComposition(next.defaultComposition);
     setTempMin(next.tempMin);
     setTempMax(next.tempMax);
+    setProbeTemperature(Math.round((next.tempMin + next.tempMax) / 2));
     setActiveWorkflowStep("system");
+  };
+
+  const switchCalculatorMode = (mode: CalculatorMode) => {
+    setCalculatorMode(mode);
+    setActiveWorkflowStep("model");
   };
 
   const showResultView = (nextView: ResultView) => {
@@ -196,9 +252,9 @@ export default function Home() {
 
   const runCalculation = () => {
     setIsRunning(true);
-    setActiveWorkflowStep(resultView);
+    setActiveWorkflowStep(calculatorMode === "single-point" ? "model" : resultView);
     window.setTimeout(() => {
-      setRunConfig({ systemId, composition, tempMin, tempMax, pressure });
+      setRunConfig({ systemId, composition, tempMin, tempMax, probeTemperature, mode: calculatorMode, pressure });
       setRunNumber((value) => value + 1);
       setIsRunning(false);
     }, 480);
@@ -218,7 +274,10 @@ export default function Home() {
     setComposition(mapping.composition);
     setTempMin(next.tempMin);
     setTempMax(next.tempMax);
-    setRunConfig({ systemId: next.id, composition: mapping.composition, tempMin: next.tempMin, tempMax: next.tempMax, pressure });
+    const nextProbe = Math.round((next.tempMin + next.tempMax) / 2);
+    setProbeTemperature(nextProbe);
+    setCalculatorMode("one-axis");
+    setRunConfig({ systemId: next.id, composition: mapping.composition, tempMin: next.tempMin, tempMax: next.tempMax, probeTemperature: nextProbe, mode: "one-axis", pressure });
     setRunNumber((value) => value + 1);
     setView("workspace");
     setActiveWorkflowStep("plot");
@@ -239,9 +298,10 @@ export default function Home() {
 
   const exportCsv = () => {
     const keys = resultSystem.phases.map((phase) => phase.key);
+    const exportedPoints = runConfig.mode === "single-point" ? [pointResult] : chartData;
     const rows = [
       ["temperature_c", ...keys].join(","),
-      ...chartData.map((row) => [row.temperature, ...keys.map((key) => row[key] ?? 0)].join(",")),
+      ...exportedPoints.map((row) => [row.temperature, ...keys.map((key) => row[key] ?? 0)].join(",")),
     ];
     const blob = new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8" });
     downloadBlob(blob, `iran-thermocalc-${resultSystem.id}-run-${runNumber}.csv`);
@@ -254,6 +314,10 @@ export default function Home() {
       exportedAt: new Date().toISOString(),
       applicationVersion: "prototype-0.1.0",
       warning: "Educational heuristic approximation; not validated for engineering or production decisions.",
+      calculation: {
+        mode: runConfig.mode,
+        solidificationNotice: runConfig.mode === "solidification" ? "Equilibrium-path proxy; this is not a Scheil simulation." : null,
+      },
       model: {
         id: resultSystem.id,
         label: resultSystem.database,
@@ -265,9 +329,14 @@ export default function Home() {
         sourceUrl: null,
         license: "prototype code; no third-party CALPHAD parameters included",
       },
-      inputs: { compositionWtPct: runConfig.composition, solute: resultSystem.solute, temperatureC: [runConfig.tempMin, runConfig.tempMax], pressureBarReference: runConfig.pressure },
+      inputs: {
+        compositionWtPct: runConfig.composition,
+        solute: resultSystem.solute,
+        temperatureC: runConfig.mode === "single-point" ? runConfig.probeTemperature : [runConfig.tempMin, runConfig.tempMax],
+        pressureBarReference: runConfig.pressure,
+      },
       phases: resultSystem.phases,
-      points: chartData,
+      points: runConfig.mode === "single-point" ? [pointResult] : chartData,
     };
     const blob = new Blob([JSON.stringify(artifact, null, 2)], { type: "application/json;charset=utf-8" });
     downloadBlob(blob, `iran-thermocalc-${resultSystem.id}-run-${runNumber}.json`);
@@ -290,6 +359,9 @@ export default function Home() {
           </button>
           <button aria-current={view === "database" ? "page" : undefined} className={view === "database" ? "active" : ""} onClick={() => setView("database")}>
             <Database size={17} /> {t.database}
+          </button>
+          <button aria-current={view === "coverage" ? "page" : undefined} className={view === "coverage" ? "active" : ""} onClick={() => setView("coverage")}>
+            <ShieldCheck size={17} /> {t.coverage}
           </button>
           <button aria-current={view === "method" ? "page" : undefined} className={view === "method" ? "active" : ""} onClick={() => setView("method")}>
             <BookOpen size={17} /> {t.method}
@@ -357,7 +429,7 @@ export default function Home() {
                   onClick={() => openWorkflowStep("model")}
                 >
                   <span className="step-icon"><Gauge size={16} /></span>
-                  <span><small>02</small><strong>Phase model</strong><em>Illustrative one-axis sweep</em></span>
+                  <span><small>02</small><strong>Calculation path</strong><em>{calculatorModes.find((mode) => mode.id === calculatorMode)?.label}</em></span>
                   {activeWorkflowStep === "model" && <span className="step-dot" />}
                 </button>
                 <span className="workflow-line" />
@@ -368,7 +440,7 @@ export default function Home() {
                   onClick={() => openWorkflowStep("plot")}
                 >
                   <span className="step-icon"><ChartNoAxesCombined size={16} /></span>
-                  <span><small>03</small><strong>Plot renderer</strong><em>Normalized weights / T</em></span>
+                  <span><small>03</small><strong>Plot renderer</strong><em>{runConfig.mode === "single-point" ? "Phase-fraction bars" : "Normalized weights / T"}</em></span>
                   {activeWorkflowStep === "plot" && <span className="step-dot" />}
                 </button>
                 <span className="workflow-line" />
@@ -379,7 +451,7 @@ export default function Home() {
                   onClick={() => openWorkflowStep("table")}
                 >
                   <span className="step-icon"><Table2 size={16} /></span>
-                  <span><small>04</small><strong>Table renderer</strong><em>36 calculated points</em></span>
+                  <span><small>04</small><strong>Table renderer</strong><em>{runConfig.mode === "single-point" ? "1 calculated state" : "36 calculated points"}</em></span>
                   {activeWorkflowStep === "table" && <span className="step-dot" />}
                 </button>
               </div>
@@ -408,6 +480,26 @@ export default function Home() {
                 {isDirty ? "Inputs changed" : "Results current"}
               </span>
             </div>
+
+            <div className="calculator-switcher" aria-label="Calculation type">
+              {calculatorModes.map((mode) => (
+                <button
+                  type="button"
+                  key={mode.id}
+                  aria-pressed={calculatorMode === mode.id}
+                  className={calculatorMode === mode.id ? "active" : ""}
+                  onClick={() => switchCalculatorMode(mode.id)}
+                >
+                  <span>{mode.label}</span>
+                  <small>{mode.description}</small>
+                </button>
+              ))}
+            </div>
+            <p className={`mode-context ${calculatorMode === "solidification" ? "warning" : ""}`}>
+              {calculatorMode === "one-axis" && "Explore how normalized heuristic phase weights change along temperature."}
+              {calculatorMode === "single-point" && "Inspect the phase-weight result at one temperature and composition."}
+              {calculatorMode === "solidification" && "Equilibrium cooling-path proxy only. This is not a Scheil calculation."}
+            </p>
 
             <div className="field-group">
               <label htmlFor="system-select">System & model</label>
@@ -476,27 +568,36 @@ export default function Home() {
             <div className="field-group">
               <div className="label-row">
                 <label>{t.conditions}</label>
-                <span>One axis</span>
+                <span>{calculatorModes.find((mode) => mode.id === calculatorMode)?.label}</span>
               </div>
               <div className="conditions-grid">
-                <label className="compact-field">
-                  <span><Thermometer size={15} /> T start</span>
-                  <div><input aria-invalid={invalidRange} type="number" min={system.tempMin} max={system.tempMax} value={tempMin} onChange={(event) => { setTempMin(Number(event.target.value)); setActiveWorkflowStep("model"); }} /><small>°C</small></div>
-                </label>
-                <label className="compact-field">
-                  <span><Thermometer size={15} /> T end</span>
-                  <div><input aria-invalid={invalidRange} type="number" min={system.tempMin} max={system.tempMax} value={tempMax} onChange={(event) => { setTempMax(Number(event.target.value)); setActiveWorkflowStep("model"); }} /><small>°C</small></div>
-                </label>
+                {calculatorMode === "single-point" ? (
+                  <label className="compact-field temperature-point-field">
+                    <span><Thermometer size={15} /> Equilibrium temperature</span>
+                    <div><input aria-invalid={invalidPoint} type="number" min={system.tempMin} max={system.tempMax} value={probeTemperature} onChange={(event) => { setProbeTemperature(Number(event.target.value)); setActiveWorkflowStep("model"); }} /><small>°C</small></div>
+                  </label>
+                ) : (
+                  <>
+                    <label className="compact-field">
+                      <span><Thermometer size={15} /> {calculatorMode === "solidification" ? "Cooling start" : "T start"}</span>
+                      <div><input aria-invalid={invalidRange} type="number" min={system.tempMin} max={system.tempMax} value={tempMin} onChange={(event) => { setTempMin(Number(event.target.value)); setActiveWorkflowStep("model"); }} /><small>°C</small></div>
+                    </label>
+                    <label className="compact-field">
+                      <span><Thermometer size={15} /> {calculatorMode === "solidification" ? "Cooling end" : "T end"}</span>
+                      <div><input aria-invalid={invalidRange} type="number" min={system.tempMin} max={system.tempMax} value={tempMax} onChange={(event) => { setTempMax(Number(event.target.value)); setActiveWorkflowStep("model"); }} /><small>°C</small></div>
+                    </label>
+                  </>
+                )}
                 <label className="compact-field">
                   <span><Gauge size={15} /> {t.pressure}</span>
                   <div><input type="number" value={pressure} disabled aria-label="Fixed reference pressure" /><small>bar · fixed</small></div>
                 </label>
                 <div className="compact-field calculated-field">
                   <span><Layers3 size={15} /> Points</span>
-                  <div><strong>36</strong><small>auto</small></div>
+                  <div><strong>{calculatorMode === "single-point" ? 1 : 36}</strong><small>auto</small></div>
                 </div>
               </div>
-              {invalidRange && <p className="validation-error" role="alert">Use an increasing range within {system.tempMin}–{system.tempMax} °C for this illustrative model.</p>}
+              {invalidInput && <p className="validation-error" role="alert">{calculatorMode === "single-point" ? `Use a temperature within ${system.tempMin}–${system.tempMax} °C.` : `Use an increasing range within ${system.tempMin}–${system.tempMax} °C for this illustrative model.`}</p>}
             </div>
 
             <div className="model-note">
@@ -504,9 +605,9 @@ export default function Home() {
               <p><strong>Model scope</strong>{system.note}</p>
             </div>
 
-            <button className="run-button" onClick={runCalculation} disabled={isRunning || invalidRange}>
+            <button className="run-button" onClick={runCalculation} disabled={isRunning || invalidInput}>
               {isRunning ? <span className="spinner" /> : <Play size={18} fill="currentColor" />}
-              {isRunning ? t.calculating : isDirty ? "Update results" : t.run}
+              {isRunning ? t.calculating : isDirty ? "Update results" : calculatorMode === "single-point" ? "Run single point" : calculatorMode === "solidification" ? "Run solidification proxy" : t.run}
             </button>
           </section>
 
@@ -514,13 +615,18 @@ export default function Home() {
             <div className="results-header">
               <div>
                 <span className="eyebrow">{t.results}</span>
-                <h2>Normalized phase weights <span>vs temperature</span></h2>
+                <h2>
+                  {runConfig.mode === "single-point" ? "Single-state phase weights" : runConfig.mode === "solidification" ? "Solidification-path proxy" : "Normalized phase weights"}
+                  <span>{runConfig.mode === "single-point" ? ` at ${runConfig.probeTemperature} °C` : " vs temperature"}</span>
+                </h2>
               </div>
               <div className="results-actions">
-                <div className="segmented" aria-label="Result format">
-                  <button aria-pressed={resultView === "plot"} className={resultView === "plot" ? "active" : ""} onClick={() => showResultView("plot")}><ChartNoAxesCombined size={15} /> {t.plot}</button>
-                  <button aria-pressed={resultView === "table"} className={resultView === "table" ? "active" : ""} onClick={() => showResultView("table")}><Table2 size={15} /> {t.table}</button>
-                </div>
+                {runConfig.mode !== "single-point" && (
+                  <div className="segmented" aria-label="Result format">
+                    <button aria-pressed={resultView === "plot"} className={resultView === "plot" ? "active" : ""} onClick={() => showResultView("plot")}><ChartNoAxesCombined size={15} /> {t.plot}</button>
+                    <button aria-pressed={resultView === "table"} className={resultView === "table" ? "active" : ""} onClick={() => showResultView("table")}><Table2 size={15} /> {t.table}</button>
+                  </div>
+                )}
                 <button className="export-button" onClick={exportCsv}><Download size={16} /> CSV</button>
                 <button className="export-button" onClick={exportJson}><Download size={16} /> JSON</button>
               </div>
@@ -530,19 +636,51 @@ export default function Home() {
             <div className="result-summary">
               <div><span>System</span><strong>{resultSystem.name}</strong></div>
               <div><span>Composition</span><strong>{runConfig.composition.toFixed(2)} wt% {resultSystem.solute}</strong></div>
-              <div><span>Range</span><strong>{runConfig.tempMin}–{runConfig.tempMax} °C</strong></div>
+              <div><span>{runConfig.mode === "single-point" ? "State" : "Range"}</span><strong>{runConfig.mode === "single-point" ? `${runConfig.probeTemperature} °C` : `${runConfig.tempMin}–${runConfig.tempMax} °C`}</strong></div>
               <div><span>Basis</span><strong>Unitless heuristic weight</strong></div>
             </div>
 
             {isDirty && (
               <div className="stale-banner" role="status">
                 <Info size={16} />
-                <span><strong>Results are from the previous inputs.</strong> Run the calculation to refresh this plot.</span>
-                <button onClick={runCalculation} disabled={invalidRange}>Refresh now</button>
+                <span><strong>Results are from the previous inputs.</strong> Run the calculation to refresh this result.</span>
+                <button onClick={runCalculation} disabled={invalidInput}>Refresh now</button>
               </div>
             )}
 
-            {resultView === "plot" ? (
+            {runConfig.mode === "solidification" && solidificationMetrics && (
+              <div className="solidification-metrics">
+                <div><span>First liquid &gt;1%</span><strong>{solidificationMetrics.incipientLiquid === null ? "Outside range" : `${solidificationMetrics.incipientLiquid.toFixed(0)} °C`}</strong></div>
+                <div><span>Liquid ≥99%</span><strong>{solidificationMetrics.fullyLiquid === null ? "Outside range" : `${solidificationMetrics.fullyLiquid.toFixed(0)} °C`}</strong></div>
+                <div><span>Transition window</span><strong>{solidificationMetrics.interval === null ? "—" : `${solidificationMetrics.interval.toFixed(0)} °C`}</strong></div>
+                <div><span>Solid at range start</span><strong>{(solidificationMetrics.solidAtMinimum * 100).toFixed(1)}%</strong></div>
+                <p><Info size={14} /> Derived from equilibrium-style heuristic samples; no back diffusion, segregation, or Scheil mass balance is solved.</p>
+              </div>
+            )}
+
+            {runConfig.mode === "single-point" ? (
+              <div className="point-result" aria-label={`Phase weights at ${runConfig.probeTemperature} degrees Celsius`}>
+                <div className="point-temperature-card">
+                  <Thermometer size={22} />
+                  <span>Calculated state</span>
+                  <strong>{runConfig.probeTemperature} °C</strong>
+                  <small>{runConfig.pressure} bar reference pressure</small>
+                </div>
+                <div className="point-phase-list">
+                  {resultSystem.phases.map((phase) => {
+                    const fraction = pointResult[phase.key] ?? 0;
+                    const state = fraction >= 0.01 ? "present" : fraction > 0 ? "trace" : "not present";
+                    return (
+                      <div className="point-phase-row" key={phase.key}>
+                        <div><span style={{ backgroundColor: phase.color }} /><strong>{phase.label}</strong><em>{state}</em></div>
+                        <div className="phase-bar-track"><span style={{ backgroundColor: phase.color, width: `${Math.max(fraction * 100, fraction > 0 ? 1 : 0)}%` }} /></div>
+                        <output>{(fraction * 100).toFixed(2)}%</output>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : resultView === "plot" ? (
               <div className="chart-wrap" aria-label="Interactive normalized heuristic phase weight chart">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart accessibilityLayer aria-label={`${resultSystem.name} normalized heuristic phase weights from ${runConfig.tempMin} to ${runConfig.tempMax} degrees Celsius`} data={chartData} margin={{ top: 18, right: 18, left: -12, bottom: 4 }}>
@@ -576,11 +714,11 @@ export default function Home() {
               </div>
             )}
 
-            <div className="phase-legend">
+            {runConfig.mode !== "single-point" && <div className="phase-legend">
               {resultSystem.phases.map((phase) => (
                 <div key={phase.key}><span style={{ backgroundColor: phase.color }} /><p><strong>{phase.label}</strong><small>Illustrative normalized fraction</small></p></div>
               ))}
-            </div>
+            </div>}
 
             <div className="confidence-bar">
               <ShieldCheck size={17} />
@@ -640,7 +778,15 @@ export default function Home() {
 
               <div className="pack-context" role="status">
                 <span>{selectedPack.code}</span>
-                <p><strong>{selectedPack.title}</strong><small>{selectedPack.models} illustrative models · {selectedPack.phases} displayed phases · {selectedPack.status}</small></p>
+                <div className="pack-context-copy">
+                  <p><strong>{selectedPack.title}</strong><small>{selectedPack.models} illustrative models · {selectedPack.phases} displayed phases · {selectedPack.status}</small></p>
+                  <dl className="pack-detail-grid">
+                    <div><dt>Components</dt><dd>{selectedPack.components}</dd></div>
+                    <div><dt>Validity</dt><dd>{selectedPack.validity}</dd></div>
+                    <div><dt>Capabilities</dt><dd>{selectedPack.capabilities}</dd></div>
+                    <div><dt>Provenance</dt><dd>{selectedPack.provenance}</dd></div>
+                  </dl>
+                </div>
               </div>
 
               {dataMode === "elements" ? (
@@ -690,6 +836,65 @@ export default function Home() {
         </main>
       )}
 
+      {view === "coverage" && (
+        <main className="coverage-page">
+          <section className="coverage-hero">
+            <div>
+              <span className="eyebrow"><Microscope size={15} /> Audited against Thermo-Calc</span>
+              <h1>Useful parity, without false equivalence.</h1>
+              <p>Iran ThermoCalc now exposes exactly what works, what is a transparent educational proxy, and what still requires an assessed CALPHAD database or specialist solver. It does not copy proprietary parameters.</p>
+              <div className="coverage-actions">
+                <button onClick={() => setView("workspace")}><Play size={16} /> Try the calculators</button>
+                <button className="secondary" onClick={() => setView("database")}><Database size={16} /> Inspect the data</button>
+              </div>
+            </div>
+            <div className="coverage-kpis" aria-label="Iran ThermoCalc coverage summary">
+              <div><strong>3</strong><span>working educational workflows</span></div>
+              <div><strong>6</strong><span>transparent binary systems</span></div>
+              <div><strong>118</strong><span>element records</span></div>
+              <div><strong>0</strong><span>proprietary datasets copied</span></div>
+            </div>
+          </section>
+
+          <section className="benchmark-section panel">
+            <div className="benchmark-heading">
+              <div><span className="eyebrow">Feature benchmark</span><h2>Capability-by-capability comparison</h2></div>
+              <a href="https://thermocalc.com/products/thermo-calc/" target="_blank" rel="noreferrer">Official product reference ↗</a>
+            </div>
+            <div className="benchmark-table-wrap">
+              <table className="benchmark-table">
+                <thead><tr><th>Capability</th><th>Thermo-Calc reference</th><th>Iran ThermoCalc today</th><th>Status</th></tr></thead>
+                <tbody>
+                  {capabilityBenchmark.map((row) => (
+                    <tr key={row.capability}>
+                      <th scope="row">{row.capability}</th>
+                      <td>{row.official}</td>
+                      <td>{row.iran}</td>
+                      <td><span className={`status-badge ${row.status}`}>{row.status === "working" ? "Working" : row.status === "proxy" ? "Proxy" : row.status === "roadmap" ? "Roadmap" : "Assessed data required"}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section className="database-gap-grid">
+            <article className="database-gap-card available">
+              <span>Available now</span><h2>Transparent educational layer</h2>
+              <ul><li>6 readable heuristic phase-system functions</li><li>Single state, one-axis, and cooling-path proxy</li><li>118-element reference catalog and 24 alloy presets</li><li>CSV and warning-bearing JSON exports</li></ul>
+            </article>
+            <article className="database-gap-card required">
+              <span>Required for engineering</span><h2>Assessed CALPHAD layer</h2>
+              <ul><li>0 licensed TDB parameter sets currently bundled</li><li>0 mobility or kinetic databases</li><li>No multicomponent Gibbs-energy minimizer</li><li>No diffusion, precipitation, aqueous, or process solver</li></ul>
+            </article>
+            <article className="database-gap-card path">
+              <span>Best next architecture</span><h2>Open solver integration</h2>
+              <ul><li>pycalphad calculation service behind the UI</li><li>Licensed or openly assessed TDB inputs</li><li>Record-level provenance, version, and validity</li><li>Regression suite against published reference cases</li></ul>
+            </article>
+          </section>
+        </main>
+      )}
+
       {view === "method" && (
         <main className="method-page">
           <section className="method-hero">
@@ -716,7 +921,7 @@ export default function Home() {
               <span className="card-number">02</span>
               <Gauge size={23} />
               <h2>Set state conditions</h2>
-              <p>Set temperature, pressure, composition and calculation path. The prototype implements one-axis educational calculations for six representative binary systems.</p>
+              <p>Set temperature, pressure, composition and calculation path. The prototype implements single-state, one-axis and cooling-path proxy calculations for six representative binary systems.</p>
             </article>
             <article className="method-card feature-card">
               <span className="card-number">03</span>
@@ -745,7 +950,7 @@ export default function Home() {
 
           <section className="disclaimer-card">
             <Info size={22} />
-            <div><h2>What is production-ready—and what is not</h2><p>The application, interaction model, responsive UI, element catalog, alloy preset library and CSV export are functional. The six phase models are educational approximations for product validation and must be replaced or verified with assessed CALPHAD parameters before engineering use.</p></div>
+            <div><h2>What is production-ready—and what is not</h2><p>The application, interaction model, responsive UI, catalogs and exports are functional. The six phase models and all three calculation paths are educational approximations for product validation; they must be replaced or verified with assessed CALPHAD parameters before engineering use.</p></div>
             <button onClick={() => setView("workspace")}>Open workspace</button>
           </section>
         </main>

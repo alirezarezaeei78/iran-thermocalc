@@ -255,6 +255,17 @@ export function calculateSystem(systemId: string, composition: number, min: numb
   });
 }
 
+export function calculatePoint(systemId: string, composition: number, temperature: number): PhasePoint {
+  const system = systems.find((item) => item.id === systemId);
+  if (!system) throw new Error(`Unknown illustrative system: ${systemId}`);
+  if (composition < 0 || composition > system.maxComposition) throw new Error("Composition is outside the model scope.");
+  if (temperature < system.tempMin || temperature > system.tempMax) throw new Error("Temperature is outside the model scope.");
+  return {
+    temperature: Number(temperature.toFixed(3)),
+    ...fractionsFor(systemId, temperature, composition),
+  } as PhasePoint;
+}
+
 export const alloyPresets = [
   { name: "AISI 1040", family: "Carbon steel", system: "Fe–C–Mn", composition: "0.40 C · 0.75 Mn · bal. Fe", use: "Shafts & machine parts" },
   { name: "AISI 4140", family: "Low-alloy steel", system: "Fe–Cr–Mo", composition: "0.40 C · 1.0 Cr · 0.2 Mo", use: "Gears & pressure parts" },
@@ -283,12 +294,72 @@ export const alloyPresets = [
 ];
 
 export const dataPacks = [
-  { code: "IRFE", title: "Steel & Fe alloys", models: 2, phases: 7, status: "Heuristic" },
-  { code: "IRAL", title: "Aluminium alloys", models: 1, phases: 3, status: "Heuristic" },
-  { code: "IRNI", title: "Nickel alloys", models: 1, phases: 4, status: "Heuristic" },
-  { code: "IRTI", title: "Titanium alloys", models: 1, phases: 4, status: "Heuristic" },
-  { code: "IRCU", title: "Copper alloys", models: 1, phases: 2, status: "Heuristic" },
-  { code: "IRPURE", title: "Pure elements", models: 0, phases: 0, status: "Reference catalog" },
+  {
+    code: "IRFE",
+    title: "Steel & Fe alloys",
+    models: 2,
+    phases: 7,
+    status: "Heuristic",
+    components: "Fe · C · Cr",
+    validity: "400–1600 °C · 1 bar",
+    capabilities: "Phase weights · transition and liquid-window proxies",
+    provenance: "Transparent Fe–C and Fe–Cr educational functions",
+  },
+  {
+    code: "IRAL",
+    title: "Aluminium alloys",
+    models: 1,
+    phases: 3,
+    status: "Heuristic",
+    components: "Al · Si",
+    validity: "350–750 °C · 1 bar",
+    capabilities: "Eutectic topology · liquid-window proxy",
+    provenance: "Transparent Al–Si educational function",
+  },
+  {
+    code: "IRNI",
+    title: "Nickel alloys",
+    models: 1,
+    phases: 4,
+    status: "Heuristic",
+    components: "Ni · Al",
+    validity: "500–1700 °C · 1 bar",
+    capabilities: "γ / γ′ / β phase-window exploration",
+    provenance: "Transparent Ni–Al educational function",
+  },
+  {
+    code: "IRTI",
+    title: "Titanium alloys",
+    models: 1,
+    phases: 4,
+    status: "Heuristic",
+    components: "Ti · Al",
+    validity: "500–1800 °C · 1 bar",
+    capabilities: "α / β / γ phase-window exploration",
+    provenance: "Transparent Ti–Al educational function",
+  },
+  {
+    code: "IRCU",
+    title: "Copper alloys",
+    models: 1,
+    phases: 2,
+    status: "Heuristic",
+    components: "Cu · Ni",
+    validity: "800–1550 °C · 1 bar",
+    capabilities: "Isomorphous solid/liquid exploration",
+    provenance: "Transparent Cu–Ni educational function",
+  },
+  {
+    code: "IRPURE",
+    title: "Pure elements",
+    models: 0,
+    phases: 0,
+    status: "Reference catalog",
+    components: "118 periodic elements",
+    validity: "Reference values as supplied by the package",
+    capabilities: "Atomic mass · melting point · density",
+    provenance: "periodic-table 0.0.8 · ISC license",
+  },
 ];
 
 export const sources = [

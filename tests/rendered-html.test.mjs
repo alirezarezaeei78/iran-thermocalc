@@ -24,6 +24,8 @@ test("server-renders the Iran ThermoCalc product shell", async () => {
   assert.match(html, /Illustrative phase system/);
   assert.match(html, /Independent research prototype/);
   assert.match(html, /Open-source UI prototype/);
+  assert.match(html, /Single point/);
+  assert.match(html, /Solidification proxy/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
 });
 
@@ -52,6 +54,9 @@ test("keeps scientific scope and export guardrails explicit", async () => {
   assert.match(page, /unvalidated educational prototype/);
   assert.match(page, /normalized unitless heuristic weight/);
   assert.match(page, /not validated for engineering or production decisions/);
+  assert.match(page, /Useful parity, without false equivalence/);
+  assert.match(page, /Assessed data required/);
+  assert.match(page, /Equilibrium cooling-path proxy only/);
   assert.match(data, /Illustrative model produced an invalid phase weight/);
   assert.match(data, /temperature: Number\(temperature\.toFixed\(3\)\)/);
   assert.match(schema, /reviewStatus/);
