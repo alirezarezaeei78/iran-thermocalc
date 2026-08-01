@@ -44,11 +44,12 @@ test("removes all disposable starter-preview infrastructure", async () => {
 });
 
 test("keeps scientific scope and export guardrails explicit", async () => {
-  const [page, data, schema, migration] = await Promise.all([
+  const [page, data, schema, migration, researchMigration] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/data.ts", import.meta.url), "utf8"),
     readFile(new URL("../db/schema.ts", import.meta.url), "utf8"),
     readFile(new URL("../drizzle/0000_iran_thermocalc.sql", import.meta.url), "utf8"),
+    readFile(new URL("../drizzle/0001_research_ingestion.sql", import.meta.url), "utf8"),
   ]);
 
   assert.match(page, /unvalidated educational prototype/);
@@ -61,10 +62,23 @@ test("keeps scientific scope and export guardrails explicit", async () => {
   assert.match(page, /Static heuristic cooling-path proxy only/);
   assert.match(page, /safeMin = runConfig\.mode === "single-point"/);
   assert.match(page, /high-to-low temperature cooling path/);
+  assert.match(page, /Multicomponent lab/);
+  assert.match(page, /Working 2–6 component input contract/);
+  assert.match(page, /No multicomponent thermodynamic or property result has been calculated/);
+  assert.match(page, /Candidate · human review required/);
+  assert.match(page, /Machine learning proposes; reviewers promote/);
   assert.match(data, /Illustrative model produced an invalid phase weight/);
+  assert.match(data, /Materials Project/);
+  assert.match(data, /OQMD/);
   assert.match(data, /temperature: Number\(temperature\.toFixed\(3\)\)/);
   assert.match(schema, /reviewStatus/);
   assert.match(schema, /contentHash/);
+  assert.match(schema, /evidenceRecords/);
+  assert.match(schema, /extractionMethod/);
+  assert.match(schema, /datasetEvidence/);
   assert.match(migration, /review_status/);
   assert.match(migration, /content_hash/);
+  assert.match(researchMigration, /evidence_records/);
+  assert.match(researchMigration, /ml_assisted|extraction_method/);
+  assert.match(researchMigration, /dataset_evidence/);
 });

@@ -17,13 +17,17 @@ import {
   Info,
   Languages,
   Layers3,
+  FileSearch,
   Microscope,
   Play,
+  Plus,
   Search,
   ShieldCheck,
   Sparkles,
   Table2,
   Thermometer,
+  Trash2,
+  Workflow,
 } from "lucide-react";
 import {
   CartesianGrid,
@@ -36,11 +40,14 @@ import {
 } from "recharts";
 import { alloyPresets, calculatePoint, calculateSystem, dataPacks, sources, systems } from "./data";
 
-type View = "workspace" | "database" | "coverage" | "method";
+type View = "workspace" | "lab" | "database" | "coverage" | "method";
 type ResultView = "plot" | "table";
 type Language = "en" | "fa";
 type WorkflowStep = "system" | "model" | "plot" | "table";
 type CalculatorMode = "one-axis" | "single-point" | "solidification";
+type LabMode = "study" | "research";
+type StudyComponent = { symbol: string; wtPercent: number; balance?: boolean };
+type CurationJob = { id: number; source: string; identifier: string; system: string; property: string; stage: string };
 
 type ElementRecord = {
   atomicNumber: number;
@@ -57,6 +64,7 @@ const elements = periodicData as ElementRecord[];
 const copy = {
   en: {
     workspace: "Workspace",
+    lab: "Multicomponent lab",
     database: "Data library",
     coverage: "Coverage",
     method: "Method & sources",
@@ -75,6 +83,7 @@ const copy = {
   },
   fa: {
     workspace: "محیط محاسبه",
+    lab: "آزمایشگاه چندجزئی",
     database: "کتابخانه داده",
     coverage: "پوشش امکانات",
     method: "روش و منابع",
@@ -102,6 +111,7 @@ const calculatorModes: { id: CalculatorMode; label: string; description: string 
 const capabilityBenchmark = [
   { capability: "Single equilibrium", official: "Built-in calculator", iran: "Educational phase-weight proxy", status: "proxy" },
   { capability: "One-axis calculation", official: "Built-in calculator", iran: "Educational proxy · plot, table, exports", status: "proxy" },
+  { capability: "Multicomponent system definition", official: "Arbitrary components with assessed databases", iran: "Working 2–6 component input contract · solver gated", status: "roadmap" },
   { capability: "Grid calculation", official: "Built-in calculator", iran: "Roadmap", status: "roadmap" },
   { capability: "Phase diagram", official: "Built-in calculator", iran: "Roadmap · boundary solver needed", status: "roadmap" },
   { capability: "Scheil solidification", official: "Built-in calculator", iran: "Cooling-path proxy only", status: "proxy" },
@@ -111,6 +121,31 @@ const capabilityBenchmark = [
   { capability: "Parameter optimization", official: "PARROT module", iran: "Not implemented", status: "missing" },
   { capability: "Diffusion & precipitation", official: "DICTRA / TC-PRISMA add-ons", iran: "External solver + assessed data required", status: "data" },
   { capability: "Programmable SDK", official: "Python, MATLAB and TQ APIs", iran: "CSV/JSON now · API roadmap", status: "roadmap" },
+] as const;
+
+const studyTemplates: { id: string; name: string; family: string; components: StudyComponent[]; temperature: [number, number] }[] = [
+  { id: "fe-cr-ni-mo", name: "Fe–Cr–Ni–Mo", family: "Stainless steel", components: [{ symbol: "Fe", wtPercent: 0, balance: true }, { symbol: "Cr", wtPercent: 18 }, { symbol: "Ni", wtPercent: 10 }, { symbol: "Mo", wtPercent: 2.5 }], temperature: [500, 1700] },
+  { id: "ni-al-cr-co-ti-ta", name: "Ni–Al–Cr–Co–Ti–Ta", family: "Nickel superalloy", components: [{ symbol: "Ni", wtPercent: 0, balance: true }, { symbol: "Al", wtPercent: 5.5 }, { symbol: "Cr", wtPercent: 15 }, { symbol: "Co", wtPercent: 10 }, { symbol: "Ti", wtPercent: 3 }, { symbol: "Ta", wtPercent: 2 }], temperature: [600, 1650] },
+  { id: "ti-al-v-mo", name: "Ti–Al–V–Mo", family: "Titanium alloy", components: [{ symbol: "Ti", wtPercent: 0, balance: true }, { symbol: "Al", wtPercent: 6 }, { symbol: "V", wtPercent: 4 }, { symbol: "Mo", wtPercent: 1 }], temperature: [400, 1800] },
+  { id: "al-mg-si-cu", name: "Al–Mg–Si–Cu", family: "Aluminium alloy", components: [{ symbol: "Al", wtPercent: 0, balance: true }, { symbol: "Mg", wtPercent: 1 }, { symbol: "Si", wtPercent: 0.7 }, { symbol: "Cu", wtPercent: 0.3 }], temperature: [250, 800] },
+  { id: "co-cr-ni-w", name: "Co–Cr–Ni–W", family: "Cobalt superalloy", components: [{ symbol: "Co", wtPercent: 0, balance: true }, { symbol: "Cr", wtPercent: 22 }, { symbol: "Ni", wtPercent: 10 }, { symbol: "W", wtPercent: 7 }], temperature: [600, 1700] },
+];
+
+const analysisTargets = [
+  { id: "phase-diagram", label: "Phase diagram", detail: "Stable phase fields and boundaries", requirement: "CALPHAD database + Gibbs minimizer" },
+  { id: "gibbs-energy", label: "Gibbs energy", detail: "G(T, P, x) by phase", requirement: "Assessed Gibbs-energy parameters" },
+  { id: "phase-stability", label: "Phase stability", detail: "Stable / metastable phase ranking", requirement: "Global equilibrium solver" },
+  { id: "sfe", label: "Stacking-fault energy", detail: "SFE vs composition and temperature", requirement: "Validated SFE property model" },
+  { id: "solubility", label: "Solubility limits", detail: "Composition limits by phase", requirement: "Assessed phase models" },
+  { id: "intermetallic", label: "Intermetallics", detail: "Ordered compound phase screening", requirement: "Sublattice models + database" },
+  { id: "tcp", label: "TCP phases", detail: "σ, μ, Laves and related risk", requirement: "Phase-complete superalloy database" },
+] as const;
+
+const researchSources = [
+  { name: "NIST Alloy Data", scope: "Experimental thermophysical data · unary, binary and ternary metals", access: "Public · point-level citations and uncertainty", href: "https://www.nist.gov/mml/acmd/trc/nist-alloy-data" },
+  { name: "Materials Project", scope: "Computed structures, thermodynamics, stability and alloy endpoints", access: "API key required · provenance endpoints", href: "https://docs.materialsproject.org/downloading-data/using-the-api/getting-started" },
+  { name: "OQMD", scope: "Computed formation energies and phase-stability data", access: "Open REST / OPTiMaDe · CC BY 4.0", href: "https://www.oqmd.org/api/" },
+  { name: "Archival literature", scope: "DOI-linked experimental and CALPHAD evidence", access: "Metadata first · full-text rights checked per record", href: "https://www.nist.gov/node/1283981" },
 ] as const;
 
 function BrandMark() {
@@ -151,11 +186,27 @@ export default function Home() {
   const [downloadMessage, setDownloadMessage] = useState("");
   const [activeWorkflowStep, setActiveWorkflowStep] = useState<WorkflowStep>("model");
   const [projectPanelOpen, setProjectPanelOpen] = useState(true);
+  const [labMode, setLabMode] = useState<LabMode>("study");
+  const [selectedTemplateId, setSelectedTemplateId] = useState("fe-cr-ni-mo");
+  const [studyComponents, setStudyComponents] = useState<StudyComponent[]>(studyTemplates[0].components);
+  const [studyTempMin, setStudyTempMin] = useState(studyTemplates[0].temperature[0]);
+  const [studyTempMax, setStudyTempMax] = useState(studyTemplates[0].temperature[1]);
+  const [newElementSymbol, setNewElementSymbol] = useState("C");
+  const [selectedAnalyses, setSelectedAnalyses] = useState<string[]>(["phase-diagram", "gibbs-energy", "phase-stability", "solubility", "intermetallic", "tcp"]);
+  const [studyReportReady, setStudyReportReady] = useState(false);
+  const [researchSource, setResearchSource] = useState(researchSources[0].name);
+  const [researchIdentifier, setResearchIdentifier] = useState("");
+  const [researchProperty, setResearchProperty] = useState("Phase equilibria");
+  const [curationJobs, setCurationJobs] = useState<CurationJob[]>([]);
 
   const t = copy[language];
   const system = systems.find((item) => item.id === systemId) ?? systems[0];
   const resultSystem = systems.find((item) => item.id === runConfig.systemId) ?? systems[0];
   const selectedPack = dataPacks.find((item) => item.code === selectedPackCode) ?? dataPacks[0];
+  const fixedCompositionTotal = studyComponents.filter((item) => !item.balance).reduce((sum, item) => sum + item.wtPercent, 0);
+  const balanceComposition = Math.max(0, 100 - fixedCompositionTotal);
+  const invalidStudy = studyComponents.length < 2 || studyComponents.length > 6 || fixedCompositionTotal >= 100 || studyTempMin >= studyTempMax;
+  const availableStudyElements = elements.filter((element) => !studyComponents.some((item) => item.symbol === element.symbol));
   const compositionStep = system.maxComposition === 6.67 ? 0.01 : system.maxComposition > 50 ? 1 : 0.05;
   const invalidRange = tempMax <= tempMin || tempMin < system.tempMin || tempMax > system.tempMax;
   const invalidPoint = probeTemperature < system.tempMin || probeTemperature > system.tempMax;
@@ -300,6 +351,38 @@ export default function Home() {
     setActiveWorkflowStep("plot");
   };
 
+  const applyStudyTemplate = (templateId: string) => {
+    const template = studyTemplates.find((item) => item.id === templateId) ?? studyTemplates[0];
+    setSelectedTemplateId(template.id);
+    setStudyComponents(template.components.map((item) => ({ ...item })));
+    setStudyTempMin(template.temperature[0]);
+    setStudyTempMax(template.temperature[1]);
+    setStudyReportReady(false);
+  };
+
+  const updateStudyComponent = (symbol: string, value: number) => {
+    setStudyComponents((current) => current.map((item) => item.symbol === symbol ? { ...item, wtPercent: Math.max(0, Math.min(99.99, value)) } : item));
+    setStudyReportReady(false);
+  };
+
+  const addStudyComponent = () => {
+    if (!newElementSymbol || studyComponents.length >= 6 || studyComponents.some((item) => item.symbol === newElementSymbol)) return;
+    setStudyComponents((current) => [...current, { symbol: newElementSymbol, wtPercent: 0.1 }]);
+    const remaining = elements.find((element) => !studyComponents.some((item) => item.symbol === element.symbol) && element.symbol !== newElementSymbol);
+    if (remaining) setNewElementSymbol(remaining.symbol);
+    setStudyReportReady(false);
+  };
+
+  const removeStudyComponent = (symbol: string) => {
+    setStudyComponents((current) => current.filter((item) => item.symbol !== symbol));
+    setStudyReportReady(false);
+  };
+
+  const toggleAnalysisTarget = (targetId: string) => {
+    setSelectedAnalyses((current) => current.includes(targetId) ? current.filter((item) => item !== targetId) : [...current, targetId]);
+    setStudyReportReady(false);
+  };
+
   const downloadBlob = (blob: Blob, filename: string) => {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
@@ -311,6 +394,43 @@ export default function Home() {
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     setDownloadMessage(`${filename} downloaded`);
     window.setTimeout(() => setDownloadMessage(""), 2500);
+  };
+
+  const exportStudyContract = () => {
+    const components = studyComponents.map((item) => ({
+      element: item.symbol,
+      wtPercent: item.balance ? Number(balanceComposition.toFixed(4)) : item.wtPercent,
+      dependent: Boolean(item.balance),
+    }));
+    const contract = {
+      product: "Iran ThermoCalc",
+      contractVersion: "multicomponent-study-0.1",
+      exportedAt: new Date().toISOString(),
+      warning: "Input contract only. No multicomponent thermodynamic or property result has been calculated.",
+      system: components.map((item) => item.element).join("-"),
+      components,
+      conditions: { temperatureC: [studyTempMin, studyTempMax], pressureBar: 1, compositionBasis: "wt%" },
+      requestedAnalyses: analysisTargets.filter((item) => selectedAnalyses.includes(item.id)),
+      executionGate: {
+        status: "blocked_until_solver_and_assessed_data_are_connected",
+        required: ["phase-complete assessed CALPHAD database", "Gibbs-energy minimizer", "validated property model for stacking-fault energy", "validation cases"],
+      },
+    };
+    downloadBlob(new Blob([JSON.stringify(contract, null, 2)], { type: "application/json;charset=utf-8" }), `iran-thermocalc-${contract.system.toLowerCase()}-study-contract.json`);
+  };
+
+  const addCurationJob = () => {
+    const identifier = researchIdentifier.trim();
+    if (!identifier) return;
+    setCurationJobs((current) => [{
+      id: Date.now(),
+      source: researchSource,
+      identifier,
+      system: studyComponents.map((item) => item.symbol).join("–"),
+      property: researchProperty,
+      stage: "Candidate · human review required",
+    }, ...current]);
+    setResearchIdentifier("");
   };
 
   const exportCsv = () => {
@@ -374,6 +494,9 @@ export default function Home() {
         <nav className="primary-nav" aria-label="Primary navigation">
           <button aria-current={view === "workspace" ? "page" : undefined} className={view === "workspace" ? "active" : ""} onClick={() => setView("workspace")}>
             <ChartNoAxesCombined size={17} /> {t.workspace}
+          </button>
+          <button aria-current={view === "lab" ? "page" : undefined} className={view === "lab" ? "active" : ""} onClick={() => setView("lab")}>
+            <Workflow size={17} /> {t.lab}
           </button>
           <button aria-current={view === "database" ? "page" : undefined} className={view === "database" ? "active" : ""} onClick={() => setView("database")}>
             <Database size={17} /> {t.database}
@@ -747,6 +870,202 @@ export default function Home() {
         </main>
       )}
 
+      {view === "lab" && (
+        <main className="lab-page">
+          <section className="lab-hero">
+            <div className="lab-hero-copy">
+              <span className="eyebrow"><Workflow size={15} /> Voice brief → product workflow</span>
+              <h1>From a six-element alloy idea to an auditable solver contract.</h1>
+              <p>Compose real 2–6 component studies, choose the properties you need, and collect traceable evidence without presenting an unvalidated estimate as a thermodynamic result.</p>
+              <div className="lab-mode-switch" aria-label="Multicomponent lab mode">
+                <button aria-pressed={labMode === "study"} className={labMode === "study" ? "active" : ""} onClick={() => setLabMode("study")}><FlaskConical size={16} /> Study composer</button>
+                <button aria-pressed={labMode === "research"} className={labMode === "research" ? "active" : ""} onClick={() => setLabMode("research")}><FileSearch size={16} /> Research pipeline</button>
+              </div>
+            </div>
+            <aside className="voice-brief" aria-label="Requirements captured from the supplied voice notes">
+              <span>Captured requirement</span>
+              <blockquote lang="fa" dir="rtl">«سیستم‌های سه تا شش جزئی، دیاگرام فازی، انرژی گیبس، پایداری فاز، انرژی نقص چیدمان، حد حلالیت، بین‌فلزی‌ها و فازهای TCP»</blockquote>
+              <div className="voice-brief-stats">
+                <div><strong>7</strong><small>analysis targets</small></div>
+                <div><strong>2–6</strong><small>components</small></div>
+                <div><strong>0</strong><small>fabricated values</small></div>
+              </div>
+            </aside>
+          </section>
+
+          {labMode === "study" ? (
+            <section className="study-layout">
+              <section className="study-builder panel">
+                <div className="lab-section-heading">
+                  <div><span className="eyebrow">01 · Define</span><h2>System composer</h2></div>
+                  <span className="component-count">{studyComponents.length} / 6 components</span>
+                </div>
+
+                <label className="lab-field" htmlFor="study-template">
+                  <span>Starting template</span>
+                  <select id="study-template" value={selectedTemplateId} onChange={(event) => applyStudyTemplate(event.target.value)}>
+                    {studyTemplates.map((template) => <option key={template.id} value={template.id}>{template.name} · {template.family}</option>)}
+                  </select>
+                </label>
+
+                <div className="composition-editor" aria-label="Study composition in weight percent">
+                  <div className="composition-editor-head"><span>Element</span><span>Composition</span><span>Action</span></div>
+                  {studyComponents.map((component) => {
+                    const element = elements.find((item) => item.symbol === component.symbol);
+                    return (
+                      <div className="composition-row" key={component.symbol}>
+                        <div className="component-symbol"><strong>{component.symbol}</strong><span>{element?.name ?? "Element"}</span></div>
+                        {component.balance ? (
+                          <output className="composition-value"><strong>{balanceComposition.toFixed(2)}</strong><span>wt% · balance</span></output>
+                        ) : (
+                          <label className="composition-input">
+                            <span className="sr-only">{component.symbol} composition</span>
+                            <input aria-label={`${component.symbol} composition in weight percent`} type="number" min="0" max="99.99" step="0.1" value={component.wtPercent} onChange={(event) => updateStudyComponent(component.symbol, Number(event.target.value))} />
+                            <small>wt%</small>
+                          </label>
+                        )}
+                        {component.balance ? <span className="balance-pill">Dependent</span> : <button className="remove-component" aria-label={`Remove ${component.symbol}`} onClick={() => removeStudyComponent(component.symbol)} disabled={studyComponents.length <= 2}><Trash2 size={15} /></button>}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="add-component-row">
+                  <label>
+                    <span className="sr-only">Element to add</span>
+                    <select aria-label="Element to add" value={newElementSymbol} onChange={(event) => setNewElementSymbol(event.target.value)} disabled={studyComponents.length >= 6}>
+                      {availableStudyElements.map((element) => <option key={element.atomicNumber} value={element.symbol}>{element.symbol} · {element.name}</option>)}
+                    </select>
+                  </label>
+                  <button onClick={addStudyComponent} disabled={studyComponents.length >= 6 || !newElementSymbol}><Plus size={16} /> Add component</button>
+                </div>
+
+                <div className={`study-total ${invalidStudy ? "invalid" : ""}`} role="status">
+                  <div><span>Specified</span><strong>{fixedCompositionTotal.toFixed(2)} wt%</strong></div>
+                  <div><span>{studyComponents.find((item) => item.balance)?.symbol} balance</span><strong>{balanceComposition.toFixed(2)} wt%</strong></div>
+                  <div><span>Total</span><strong>{(fixedCompositionTotal + balanceComposition).toFixed(2)} wt%</strong></div>
+                </div>
+                {fixedCompositionTotal >= 100 && <p className="validation-error" role="alert">Specified components must total less than 100 wt% so the balance element remains positive.</p>}
+
+                <div className="study-conditions">
+                  <label><span><Thermometer size={15} /> Temperature start</span><div><input aria-label="Study minimum temperature" type="number" value={studyTempMin} onChange={(event) => { setStudyTempMin(Number(event.target.value)); setStudyReportReady(false); }} /><small>°C</small></div></label>
+                  <label><span><Thermometer size={15} /> Temperature end</span><div><input aria-label="Study maximum temperature" type="number" value={studyTempMax} onChange={(event) => { setStudyTempMax(Number(event.target.value)); setStudyReportReady(false); }} /><small>°C</small></div></label>
+                  <div><span><Gauge size={15} /> Pressure</span><strong>1 bar</strong><small>reference</small></div>
+                </div>
+                {studyTempMin >= studyTempMax && <p className="validation-error" role="alert">Temperature end must be higher than temperature start.</p>}
+              </section>
+
+              <section className="analysis-contract panel">
+                <div className="lab-section-heading">
+                  <div><span className="eyebrow">02 · Scope</span><h2>Requested analyses</h2></div>
+                  <span className="component-count">{selectedAnalyses.length} selected</span>
+                </div>
+                <p className="section-intro">Each target declares the scientific dependency needed before execution. Selection creates an implementation-ready input contract; it does not invent an answer.</p>
+                <div className="analysis-target-grid">
+                  {analysisTargets.map((target) => {
+                    const selected = selectedAnalyses.includes(target.id);
+                    return (
+                      <button key={target.id} aria-pressed={selected} className={selected ? "active" : ""} onClick={() => toggleAnalysisTarget(target.id)}>
+                        <span>{selected ? <CheckCircle2 size={17} /> : <span className="target-empty" />}</span>
+                        <strong>{target.label}</strong>
+                        <small>{target.detail}</small>
+                        <em>{target.requirement}</em>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <button className="validate-study-button" disabled={invalidStudy || selectedAnalyses.length === 0} onClick={() => setStudyReportReady(true)}><ShieldCheck size={17} /> Validate study readiness</button>
+
+                {!studyReportReady ? (
+                  <div className="preflight-card">
+                    <Gauge size={20} />
+                    <div><strong>Preflight has not run</strong><p>Validate the composition, conditions, requested properties, and solver dependencies before export.</p></div>
+                  </div>
+                ) : (
+                  <div className="readiness-report" aria-live="polite">
+                    <div className="readiness-heading"><span className="eyebrow">Preflight result</span><strong>Input valid · scientific execution blocked</strong></div>
+                    <div className="readiness-list">
+                      <div className="readiness-item pass"><CheckCircle2 size={16} /><span><strong>System contract valid</strong><small>{studyComponents.length} unique elements · composition normalized to 100 wt%</small></span></div>
+                      <div className="readiness-item pass"><CheckCircle2 size={16} /><span><strong>Conditions specified</strong><small>{studyTempMin}–{studyTempMax} °C · 1 bar</small></span></div>
+                      <div className="readiness-item gate"><Info size={16} /><span><strong>Assessed phase database required</strong><small>No licensed, phase-complete CALPHAD parameter set is connected.</small></span></div>
+                      <div className="readiness-item gate"><Info size={16} /><span><strong>Equilibrium solver required</strong><small>No Gibbs-energy minimizer has executed this study.</small></span></div>
+                      {selectedAnalyses.includes("sfe") && <div className="readiness-item gate"><Info size={16} /><span><strong>Validated SFE model required</strong><small>Stacking-fault energy needs an alloy-specific property model and validation range.</small></span></div>}
+                    </div>
+                    <div className="no-result-notice"><ShieldCheck size={18} /><p><strong>No multicomponent thermodynamic or property result has been calculated.</strong>This is an auditable study definition, ready for a validated backend.</p></div>
+                    <button className="study-export-button" onClick={exportStudyContract}><Download size={16} /> Export solver input contract</button>
+                    <span className="download-toast lab-download-status" role="status" aria-live="polite">{downloadMessage}</span>
+                  </div>
+                )}
+              </section>
+            </section>
+          ) : (
+            <section className="research-layout">
+              <section className="pipeline-map panel">
+                <div className="lab-section-heading"><div><span className="eyebrow">Evidence architecture</span><h2>Research-to-database pipeline</h2></div><span className="component-count">Human-reviewed</span></div>
+                <div className="pipeline-stages" aria-label="Evidence ingestion stages">
+                  {["Discover", "Extract", "Normalize", "Human review", "Versioned release"].map((stage, index) => (
+                    <div className="pipeline-stage-wrap" key={stage}>
+                      <div className="pipeline-step"><span>{String(index + 1).padStart(2, "0")}</span><strong>{stage}</strong><small>{["API, DOI or registry", "Structured fields + evidence", "Units, phases, composition", "Source and uncertainty check", "Hash, license and provenance"][index]}</small></div>
+                      {index < 4 && <span className="pipeline-connector" aria-hidden="true">→</span>}
+                    </div>
+                  ))}
+                </div>
+                <div className="pipeline-rule"><Sparkles size={18} /><p><strong>Machine learning proposes; reviewers promote.</strong>Automated extraction may create a candidate record, but only a cited, licensed, unit-normalized and human-reviewed record can enter a released dataset.</p></div>
+              </section>
+
+              <section className="source-registry-grid" aria-label="Research source registry">
+                {researchSources.map((source) => (
+                  <a className="research-source-card" key={source.name} href={source.href} target="_blank" rel="noreferrer">
+                    <span><Database size={15} /> Registered source</span>
+                    <h3>{source.name}</h3>
+                    <p>{source.scope}</p>
+                    <strong>{source.access} ↗</strong>
+                  </a>
+                ))}
+              </section>
+
+              <section className="curation-panel panel">
+                <div className="lab-section-heading"><div><span className="eyebrow">Candidate intake</span><h2>Build an evidence queue</h2></div><span className="component-count">{curationJobs.length} candidates</span></div>
+                <p className="section-intro">This local queue demonstrates the workflow contract. It does not download paywalled text or automatically accept extracted scientific claims.</p>
+                <div className="curation-form">
+                  <label><span>Source</span><select value={researchSource} onChange={(event) => setResearchSource(event.target.value)}>{researchSources.map((source) => <option key={source.name}>{source.name}</option>)}</select></label>
+                  <label><span>DOI, URL or record ID</span><input aria-label="DOI, URL or record ID" placeholder="10.xxxx/… or source record" value={researchIdentifier} onChange={(event) => setResearchIdentifier(event.target.value)} /></label>
+                  <label><span>Property family</span><select value={researchProperty} onChange={(event) => setResearchProperty(event.target.value)}>{["Phase equilibria", "Gibbs energy", "Solubility", "Stacking-fault energy", "Intermetallic / TCP phases", "Thermophysical property"].map((property) => <option key={property}>{property}</option>)}</select></label>
+                  <button onClick={addCurationJob} disabled={!researchIdentifier.trim()}><Plus size={16} /> Add candidate</button>
+                </div>
+
+                <div className="curation-content">
+                  <div className="curation-queue">
+                    <h3>Review queue</h3>
+                    {curationJobs.length === 0 ? (
+                      <div className="queue-empty"><FileSearch size={24} /><strong>No candidate records yet</strong><p>Add a DOI, public API identifier, or source URL to create a reviewable placeholder.</p></div>
+                    ) : curationJobs.map((job) => (
+                      <article className="curation-job" key={job.id}>
+                        <div><span>{job.source}</span><strong>{job.identifier}</strong><small>{job.system} · {job.property}</small></div>
+                        <em>{job.stage}</em>
+                        <button aria-label={`Remove ${job.identifier}`} onClick={() => setCurationJobs((current) => current.filter((item) => item.id !== job.id))}><Trash2 size={15} /></button>
+                      </article>
+                    ))}
+                  </div>
+                  <div className="schema-fields">
+                    <h3>Required evidence record</h3>
+                    <dl>
+                      <div><dt>Identity</dt><dd>DOI / source ID, title, authors, year</dd></div>
+                      <div><dt>System</dt><dd>Elements, composition basis and exact values</dd></div>
+                      <div><dt>Conditions</dt><dd>Temperature, pressure and processing history</dd></div>
+                      <div><dt>Observation</dt><dd>Value, unit, uncertainty and method</dd></div>
+                      <div><dt>Phase evidence</dt><dd>Identity, constitution and interpretation split</dd></div>
+                      <div><dt>Governance</dt><dd>License, reviewer, content hash and version</dd></div>
+                    </dl>
+                  </div>
+                </div>
+              </section>
+            </section>
+          )}
+        </main>
+      )}
+
       {view === "database" && (
         <main className="library-page">
           <section className="library-hero">
@@ -759,7 +1078,7 @@ export default function Home() {
               <div><strong>118</strong><span>elements</span></div>
               <div><strong>24</strong><span>alloy presets</span></div>
               <div><strong>6</strong><span>phase systems</span></div>
-              <div><strong>4</strong><span>public references</span></div>
+              <div><strong>{sources.length}</strong><span>public references</span></div>
             </div>
           </section>
 
@@ -863,6 +1182,7 @@ export default function Home() {
               <p>Iran ThermoCalc now exposes exactly what works, what is a transparent educational proxy, and what still requires an assessed CALPHAD database or specialist solver. It does not copy proprietary parameters.</p>
               <div className="coverage-actions">
                 <button onClick={() => setView("workspace")}><Play size={16} /> Try the calculators</button>
+                <button className="secondary" onClick={() => setView("lab")}><Workflow size={16} /> Build a 2–6 component study</button>
                 <button className="secondary" onClick={() => setView("database")}><Database size={16} /> Inspect the data</button>
               </div>
             </div>

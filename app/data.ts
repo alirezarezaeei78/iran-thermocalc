@@ -364,7 +364,10 @@ export const dataPacks = [
 
 export const sources = [
   { title: "NIST Alloy Data", label: "Unary, binary and ternary metal-system properties", href: "https://www.nist.gov/mml/acmd/trc/nist-alloy-data", type: "Government data" },
+  { title: "NIST structured literature capture", label: "Experimental metadata, phase identification and uncertainty model", href: "https://www.nist.gov/node/1283981", type: "Data method" },
   { title: "NIST Chemistry WebBook", label: "Thermochemical and thermophysical reference data", href: "https://webbook.nist.gov/", type: "Government data" },
+  { title: "Materials Project", label: "Computed materials, thermodynamics, provenance and alloy endpoints", href: "https://docs.materialsproject.org/downloading-data/using-the-api/getting-started", type: "Public API" },
+  { title: "OQMD", label: "Open computed formation-energy and phase-stability data", href: "https://www.oqmd.org/api/", type: "Public API" },
   { title: "pycalphad", label: "Open-source CALPHAD calculation framework and TDB parser", href: "https://pycalphad.org/docs/latest/", type: "Open source" },
   { title: "Thermo-Calc product reference", label: "Reference workflow, calculators and database categories", href: "https://thermocalc.com/products/thermo-calc/", type: "Benchmark" },
 ];
