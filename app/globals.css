@@ -183,7 +183,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .panel-heading h1 { font-size: 22px; }
 .panel-heading h2 { font-size: 17px; }
 .eyebrow { display: inline-flex; align-items: center; gap: 6px; color: var(--teal-dark); font-size: 10px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
-.quiet-icon { border: 0; background: transparent; color: #7e8996; cursor: pointer; }
+.quiet-icon { width: 36px; height: 36px; display: grid; place-items: center; border: 0; border-radius: 7px; background: transparent; color: #7e8996; cursor: pointer; }
+.quiet-icon:hover { background: #f1f4f7; color: var(--ink); }
+.quiet-icon svg { transition: transform .18s ease; }
+.quiet-icon[aria-expanded="false"] svg { transform: rotate(-90deg); }
 .saved-state { display: inline-flex; align-items: center; gap: 5px; color: var(--teal-dark); font-size: 11px; }
 .saved-state.dirty { color: #a46e13; }
 
@@ -204,6 +207,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 }
 [dir="rtl"] .workflow-step { text-align: right; }
 .workflow-step:hover { background: #f7f9fb; }
+.workflow-step:focus-visible { outline: 3px solid rgba(15,167,143,.22); outline-offset: 2px; }
 .workflow-step.active { background: var(--teal-soft); border-color: #bde7dc; }
 .workflow-step > span:nth-child(2) { display: grid; gap: 2px; }
 .workflow-step small { color: #9aa5b2; font-size: 9px; font-weight: 800; letter-spacing: .08em; }
@@ -221,6 +225,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .project-meta span { color: #7c8794; }
 .project-meta strong { font-size: 10px; }
 .project-meta .state-good { color: var(--teal-dark); }
+
+#results-section:focus { outline: 3px solid rgba(15,167,143,.2); outline-offset: -3px; }
 
 .mini-notice { margin-top: 22px; display: grid; grid-template-columns: auto 1fr; gap: 9px; padding: 12px; background: #f1f4f7; color: #667383; }
 .mini-notice svg { color: var(--teal-dark); }

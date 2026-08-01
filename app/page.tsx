@@ -38,6 +38,7 @@ import { alloyPresets, calculateSystem, dataPacks, sources, systems } from "./da
 type View = "workspace" | "database" | "method";
 type ResultView = "plot" | "table";
 type Language = "en" | "fa";
+type WorkflowStep = "system" | "model" | "plot" | "table";
 
 type ElementRecord = {
   atomicNumber: number;
@@ -120,6 +121,8 @@ export default function Home() {
   const [dataMode, setDataMode] = useState<"elements" | "alloys">("elements");
   const [selectedPackCode, setSelectedPackCode] = useState("IRFE");
   const [downloadMessage, setDownloadMessage] = useState("");
+  const [activeWorkflowStep, setActiveWorkflowStep] = useState<WorkflowStep>("model");
+  const [projectPanelOpen, setProjectPanelOpen] = useState(true);
 
   const t = copy[language];
   const system = systems.find((item) => item.id === systemId) ?? systems[0];
@@ -167,10 +170,33 @@ export default function Home() {
     setComposition(next.defaultComposition);
     setTempMin(next.tempMin);
     setTempMax(next.tempMax);
+    setActiveWorkflowStep("system");
+  };
+
+  const showResultView = (nextView: ResultView) => {
+    setResultView(nextView);
+    setActiveWorkflowStep(nextView);
+  };
+
+  const openWorkflowStep = (step: WorkflowStep) => {
+    setActiveWorkflowStep(step);
+    if (step === "plot" || step === "table") setResultView(step);
+
+    window.requestAnimationFrame(() => {
+      const targetId = step === "system"
+        ? "system-select"
+        : step === "model"
+          ? "composition-input"
+          : "results-section";
+      const target = document.getElementById(targetId);
+      target?.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+      window.setTimeout(() => target?.focus({ preventScroll: true }), 260);
+    });
   };
 
   const runCalculation = () => {
     setIsRunning(true);
+    setActiveWorkflowStep(resultView);
     window.setTimeout(() => {
       setRunConfig({ systemId, composition, tempMin, tempMax, pressure });
       setRunNumber((value) => value + 1);
@@ -195,6 +221,7 @@ export default function Home() {
     setRunConfig({ systemId: next.id, composition: mapping.composition, tempMin: next.tempMin, tempMax: next.tempMax, pressure });
     setRunNumber((value) => value + 1);
     setView("workspace");
+    setActiveWorkflowStep("plot");
   };
 
   const downloadBlob = (blob: Blob, filename: string) => {
@@ -298,42 +325,75 @@ export default function Home() {
                 <span className="eyebrow">{t.projects}</span>
                 <h2>Alloy study 01</h2>
               </div>
-              <button className="quiet-icon" aria-label="Project options"><ChevronDown size={18} /></button>
-            </div>
-
-            <div className="workflow">
-              <button className="workflow-step complete">
-                <span className="step-icon"><Database size={16} /></span>
-                <span><small>01</small><strong>System definition</strong><em>{system.database}</em></span>
-                <CheckCircle2 size={16} />
-              </button>
-              <span className="workflow-line" />
-              <button className="workflow-step active">
-                <span className="step-icon"><Gauge size={16} /></span>
-                <span><small>02</small><strong>Phase model</strong><em>Illustrative one-axis sweep</em></span>
-                <span className="step-dot" />
-              </button>
-              <span className="workflow-line" />
-              <button className="workflow-step">
-                <span className="step-icon"><ChartNoAxesCombined size={16} /></span>
-                <span><small>03</small><strong>Plot renderer</strong><em>Normalized weights / T</em></span>
-              </button>
-              <span className="workflow-line" />
-              <button className="workflow-step">
-                <span className="step-icon"><Table2 size={16} /></span>
-                <span><small>04</small><strong>Table renderer</strong><em>36 calculated points</em></span>
+              <button
+                type="button"
+                className="quiet-icon"
+                aria-label={projectPanelOpen ? "Collapse project flow" : "Expand project flow"}
+                aria-controls="project-flow-content"
+                aria-expanded={projectPanelOpen}
+                onClick={() => setProjectPanelOpen((open) => !open)}
+              >
+                <ChevronDown size={18} />
               </button>
             </div>
 
-            <div className="project-meta">
-              <div><span>Engine</span><strong>Illustrative heuristic</strong></div>
-              <div><span>Last run</span><strong>Run #{String(runNumber).padStart(3, "0")}</strong></div>
-              <div><span>State</span><strong className="state-good">Ready</strong></div>
-            </div>
+            <div id="project-flow-content" hidden={!projectPanelOpen}>
+              <div className="workflow">
+                <button
+                  type="button"
+                  className={`workflow-step complete ${activeWorkflowStep === "system" ? "active" : ""}`}
+                  aria-current={activeWorkflowStep === "system" ? "step" : undefined}
+                  onClick={() => openWorkflowStep("system")}
+                >
+                  <span className="step-icon"><Database size={16} /></span>
+                  <span><small>01</small><strong>System definition</strong><em>{system.database}</em></span>
+                  <CheckCircle2 size={16} />
+                </button>
+                <span className="workflow-line" />
+                <button
+                  type="button"
+                  className={`workflow-step ${activeWorkflowStep === "model" ? "active" : ""}`}
+                  aria-current={activeWorkflowStep === "model" ? "step" : undefined}
+                  onClick={() => openWorkflowStep("model")}
+                >
+                  <span className="step-icon"><Gauge size={16} /></span>
+                  <span><small>02</small><strong>Phase model</strong><em>Illustrative one-axis sweep</em></span>
+                  {activeWorkflowStep === "model" && <span className="step-dot" />}
+                </button>
+                <span className="workflow-line" />
+                <button
+                  type="button"
+                  className={`workflow-step ${activeWorkflowStep === "plot" ? "active" : ""}`}
+                  aria-current={activeWorkflowStep === "plot" ? "step" : undefined}
+                  onClick={() => openWorkflowStep("plot")}
+                >
+                  <span className="step-icon"><ChartNoAxesCombined size={16} /></span>
+                  <span><small>03</small><strong>Plot renderer</strong><em>Normalized weights / T</em></span>
+                  {activeWorkflowStep === "plot" && <span className="step-dot" />}
+                </button>
+                <span className="workflow-line" />
+                <button
+                  type="button"
+                  className={`workflow-step ${activeWorkflowStep === "table" ? "active" : ""}`}
+                  aria-current={activeWorkflowStep === "table" ? "step" : undefined}
+                  onClick={() => openWorkflowStep("table")}
+                >
+                  <span className="step-icon"><Table2 size={16} /></span>
+                  <span><small>04</small><strong>Table renderer</strong><em>36 calculated points</em></span>
+                  {activeWorkflowStep === "table" && <span className="step-dot" />}
+                </button>
+              </div>
 
-            <div className="mini-notice">
-              <Info size={16} />
-              <p><strong>Know your confidence.</strong> Demo phase models are visibly labeled and never mixed with validated production data.</p>
+              <div className="project-meta">
+                <div><span>Engine</span><strong>Illustrative heuristic</strong></div>
+                <div><span>Last run</span><strong>Run #{String(runNumber).padStart(3, "0")}</strong></div>
+                <div><span>State</span><strong className="state-good">Ready</strong></div>
+              </div>
+
+              <div className="mini-notice">
+                <Info size={16} />
+                <p><strong>Know your confidence.</strong> Demo phase models are visibly labeled and never mixed with validated production data.</p>
+              </div>
             </div>
           </aside>
 
@@ -379,13 +439,17 @@ export default function Home() {
                   <span>{system.solute}</span>
                   <div>
                     <input
+                      id="composition-input"
                       aria-label={`${system.solute} composition in weight percent`}
                       type="number"
                       min="0"
                       max={system.maxComposition}
                       step={compositionStep}
                       value={composition}
-                      onChange={(event) => setComposition(Math.min(system.maxComposition, Math.max(0, Number(event.target.value))))}
+                      onChange={(event) => {
+                        setComposition(Math.min(system.maxComposition, Math.max(0, Number(event.target.value))));
+                        setActiveWorkflowStep("model");
+                      }}
                     />
                     <small>wt%</small>
                   </div>
@@ -399,7 +463,10 @@ export default function Home() {
                 max={system.maxComposition}
                 step={compositionStep}
                 value={composition}
-                onChange={(event) => setComposition(Number(event.target.value))}
+                onChange={(event) => {
+                  setComposition(Number(event.target.value));
+                  setActiveWorkflowStep("model");
+                }}
               />
               <div className="range-labels"><span>0</span><span>{system.maxComposition} wt% {system.solute}</span></div>
             </div>
@@ -414,11 +481,11 @@ export default function Home() {
               <div className="conditions-grid">
                 <label className="compact-field">
                   <span><Thermometer size={15} /> T start</span>
-                  <div><input aria-invalid={invalidRange} type="number" min={system.tempMin} max={system.tempMax} value={tempMin} onChange={(event) => setTempMin(Number(event.target.value))} /><small>°C</small></div>
+                  <div><input aria-invalid={invalidRange} type="number" min={system.tempMin} max={system.tempMax} value={tempMin} onChange={(event) => { setTempMin(Number(event.target.value)); setActiveWorkflowStep("model"); }} /><small>°C</small></div>
                 </label>
                 <label className="compact-field">
                   <span><Thermometer size={15} /> T end</span>
-                  <div><input aria-invalid={invalidRange} type="number" min={system.tempMin} max={system.tempMax} value={tempMax} onChange={(event) => setTempMax(Number(event.target.value))} /><small>°C</small></div>
+                  <div><input aria-invalid={invalidRange} type="number" min={system.tempMin} max={system.tempMax} value={tempMax} onChange={(event) => { setTempMax(Number(event.target.value)); setActiveWorkflowStep("model"); }} /><small>°C</small></div>
                 </label>
                 <label className="compact-field">
                   <span><Gauge size={15} /> {t.pressure}</span>
@@ -443,7 +510,7 @@ export default function Home() {
             </button>
           </section>
 
-          <section className="results-panel panel">
+          <section id="results-section" className="results-panel panel" tabIndex={-1}>
             <div className="results-header">
               <div>
                 <span className="eyebrow">{t.results}</span>
@@ -451,8 +518,8 @@ export default function Home() {
               </div>
               <div className="results-actions">
                 <div className="segmented" aria-label="Result format">
-                  <button aria-pressed={resultView === "plot"} className={resultView === "plot" ? "active" : ""} onClick={() => setResultView("plot")}><ChartNoAxesCombined size={15} /> {t.plot}</button>
-                  <button aria-pressed={resultView === "table"} className={resultView === "table" ? "active" : ""} onClick={() => setResultView("table")}><Table2 size={15} /> {t.table}</button>
+                  <button aria-pressed={resultView === "plot"} className={resultView === "plot" ? "active" : ""} onClick={() => showResultView("plot")}><ChartNoAxesCombined size={15} /> {t.plot}</button>
+                  <button aria-pressed={resultView === "table"} className={resultView === "table" ? "active" : ""} onClick={() => showResultView("table")}><Table2 size={15} /> {t.table}</button>
                 </div>
                 <button className="export-button" onClick={exportCsv}><Download size={16} /> CSV</button>
                 <button className="export-button" onClick={exportJson}><Download size={16} /> JSON</button>
