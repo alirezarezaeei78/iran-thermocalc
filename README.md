@@ -16,6 +16,9 @@ npm run dev
 npm run build
 ```
 
+`npm run dev` starts the validated build at `http://localhost:3000`. Use
+`npm run dev:hot` when editing source code and you need hot reload.
+
 This starter does not use `wrangler.jsonc`.
 
 ## Included Shape
@@ -89,7 +92,8 @@ actions tied to the current ChatGPT user. Leave public content anonymous.
 
 ## Useful Commands
 
-- `npm run dev`: start local development
+- `npm run dev`: run the validated build locally
+- `npm run dev:hot`: start source-code development with hot reload
 - `npm run build`: verify the vinext build output
 - `npm test`: build the starter and verify its rendered loading skeleton
 - `npm run db:generate`: generate Drizzle migrations after schema changes
