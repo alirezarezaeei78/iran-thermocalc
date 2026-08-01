@@ -55,8 +55,12 @@ test("keeps scientific scope and export guardrails explicit", async () => {
   assert.match(page, /normalized unitless heuristic weight/);
   assert.match(page, /not validated for engineering or production decisions/);
   assert.match(page, /Useful parity, without false equivalence/);
-  assert.match(page, /Assessed data required/);
-  assert.match(page, /Equilibrium cooling-path proxy only/);
+  assert.match(page, /Solver \+ assessed data required/);
+  assert.match(page, /High-to-low sampled proxy with ΔT/);
+  assert.match(page, /Heuristic model output/);
+  assert.match(page, /Static heuristic cooling-path proxy only/);
+  assert.match(page, /safeMin = runConfig\.mode === "single-point"/);
+  assert.match(page, /high-to-low temperature cooling path/);
   assert.match(data, /Illustrative model produced an invalid phase weight/);
   assert.match(data, /temperature: Number\(temperature\.toFixed\(3\)\)/);
   assert.match(schema, /reviewStatus/);

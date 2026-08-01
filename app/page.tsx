@@ -100,15 +100,15 @@ const calculatorModes: { id: CalculatorMode; label: string; description: string 
 ];
 
 const capabilityBenchmark = [
-  { capability: "Single equilibrium", official: "Built-in calculator", iran: "Working educational model", status: "working" },
-  { capability: "One-axis calculation", official: "Built-in calculator", iran: "Working · plot, table, exports", status: "working" },
+  { capability: "Single equilibrium", official: "Built-in calculator", iran: "Educational phase-weight proxy", status: "proxy" },
+  { capability: "One-axis calculation", official: "Built-in calculator", iran: "Educational proxy · plot, table, exports", status: "proxy" },
   { capability: "Grid calculation", official: "Built-in calculator", iran: "Roadmap", status: "roadmap" },
   { capability: "Phase diagram", official: "Built-in calculator", iran: "Roadmap · boundary solver needed", status: "roadmap" },
   { capability: "Scheil solidification", official: "Built-in calculator", iran: "Cooling-path proxy only", status: "proxy" },
   { capability: "Property models", official: "Built-in + model libraries", iran: "Roadmap", status: "roadmap" },
-  { capability: "Material-to-material", official: "Built-in calculator", iran: "Not implemented", status: "data" },
-  { capability: "Aqueous / Pourbaix", official: "Built-in calculators", iran: "Not implemented", status: "data" },
-  { capability: "Parameter optimization", official: "PARROT module", iran: "Not implemented", status: "data" },
+  { capability: "Material-to-material", official: "Built-in calculator", iran: "Not implemented", status: "missing" },
+  { capability: "Aqueous / Pourbaix", official: "Built-in calculators", iran: "Not implemented", status: "missing" },
+  { capability: "Parameter optimization", official: "PARROT module", iran: "Not implemented", status: "missing" },
   { capability: "Diffusion & precipitation", official: "DICTRA / TC-PRISMA add-ons", iran: "External solver + assessed data required", status: "data" },
   { capability: "Programmable SDK", official: "Python, MATLAB and TQ APIs", iran: "CSV/JSON now · API roadmap", status: "roadmap" },
 ] as const;
@@ -169,25 +169,42 @@ export default function Home() {
     calculatorMode !== runConfig.mode ||
     pressure !== runConfig.pressure;
   const chartData = useMemo(
-    () => calculateSystem(runConfig.systemId, runConfig.composition, runConfig.tempMin, runConfig.tempMax),
+    () => {
+      const activeSystem = systems.find((item) => item.id === runConfig.systemId) ?? systems[0];
+      const safeMin = runConfig.mode === "single-point" ? activeSystem.tempMin : runConfig.tempMin;
+      const safeMax = runConfig.mode === "single-point" ? activeSystem.tempMax : runConfig.tempMax;
+      return calculateSystem(runConfig.systemId, runConfig.composition, safeMin, safeMax);
+    },
     [runConfig],
   );
   const pointResult = useMemo(
-    () => calculatePoint(runConfig.systemId, runConfig.composition, runConfig.probeTemperature),
-    [runConfig.systemId, runConfig.composition, runConfig.probeTemperature],
+    () => {
+      const activeSystem = systems.find((item) => item.id === runConfig.systemId) ?? systems[0];
+      const safeProbe = runConfig.mode === "single-point"
+        ? runConfig.probeTemperature
+        : Math.round((activeSystem.tempMin + activeSystem.tempMax) / 2);
+      return calculatePoint(runConfig.systemId, runConfig.composition, safeProbe);
+    },
+    [runConfig.systemId, runConfig.composition, runConfig.probeTemperature, runConfig.mode],
+  );
+  const orderedPathData = useMemo(
+    () => runConfig.mode === "solidification" ? [...chartData].reverse() : chartData,
+    [chartData, runConfig.mode],
   );
   const solidificationMetrics = useMemo(() => {
     const liquidKey = resultSystem.phases.find((phase) => phase.key === "liquid")?.key;
     if (!liquidKey) return null;
-    const firstLiquid = chartData.find((row) => (row[liquidKey] ?? 0) > 0.01);
-    const fullyLiquid = chartData.find((row) => (row[liquidKey] ?? 0) >= 0.99);
+    const coolingPath = [...chartData].reverse();
+    const firstSolid = coolingPath.find((row) => 1 - (row[liquidKey] ?? 0) > 0.01);
+    const nearlySolid = coolingPath.find((row) => 1 - (row[liquidKey] ?? 0) >= 0.99);
     const lastPoint = chartData[0];
     const solidAtMinimum = 1 - (lastPoint?.[liquidKey] ?? 0);
     return {
-      incipientLiquid: firstLiquid?.temperature ?? null,
-      fullyLiquid: fullyLiquid?.temperature ?? null,
-      interval: firstLiquid && fullyLiquid ? fullyLiquid.temperature - firstLiquid.temperature : null,
+      firstSolid: firstSolid?.temperature ?? null,
+      nearlySolid: nearlySolid?.temperature ?? null,
+      interval: firstSolid && nearlySolid ? firstSolid.temperature - nearlySolid.temperature : null,
       solidAtMinimum,
+      sampleSpacing: (runConfig.tempMax - runConfig.tempMin) / Math.max(1, chartData.length - 1),
     };
   }, [chartData, resultSystem]);
 
@@ -298,7 +315,7 @@ export default function Home() {
 
   const exportCsv = () => {
     const keys = resultSystem.phases.map((phase) => phase.key);
-    const exportedPoints = runConfig.mode === "single-point" ? [pointResult] : chartData;
+    const exportedPoints = runConfig.mode === "single-point" ? [pointResult] : orderedPathData;
     const rows = [
       ["temperature_c", ...keys].join(","),
       ...exportedPoints.map((row) => [row.temperature, ...keys.map((key) => row[key] ?? 0)].join(",")),
@@ -316,7 +333,8 @@ export default function Home() {
       warning: "Educational heuristic approximation; not validated for engineering or production decisions.",
       calculation: {
         mode: runConfig.mode,
-        solidificationNotice: runConfig.mode === "solidification" ? "Equilibrium-path proxy; this is not a Scheil simulation." : null,
+        solidificationNotice: runConfig.mode === "solidification" ? "Static heuristic cooling-path proxy; this is not a Scheil simulation." : null,
+        pointOrder: runConfig.mode === "solidification" ? "high-to-low temperature cooling path" : runConfig.mode === "single-point" ? "single state" : "low-to-high temperature axis",
       },
       model: {
         id: resultSystem.id,
@@ -336,7 +354,7 @@ export default function Home() {
         pressureBarReference: runConfig.pressure,
       },
       phases: resultSystem.phases,
-      points: runConfig.mode === "single-point" ? [pointResult] : chartData,
+      points: runConfig.mode === "single-point" ? [pointResult] : orderedPathData,
     };
     const blob = new Blob([JSON.stringify(artifact, null, 2)], { type: "application/json;charset=utf-8" });
     downloadBlob(blob, `iran-thermocalc-${resultSystem.id}-run-${runNumber}.json`);
@@ -498,7 +516,7 @@ export default function Home() {
             <p className={`mode-context ${calculatorMode === "solidification" ? "warning" : ""}`}>
               {calculatorMode === "one-axis" && "Explore how normalized heuristic phase weights change along temperature."}
               {calculatorMode === "single-point" && "Inspect the phase-weight result at one temperature and composition."}
-              {calculatorMode === "solidification" && "Equilibrium cooling-path proxy only. This is not a Scheil calculation."}
+              {calculatorMode === "solidification" && "Static heuristic cooling-path proxy only. This is not a Scheil calculation."}
             </p>
 
             <div className="field-group">
@@ -573,17 +591,17 @@ export default function Home() {
               <div className="conditions-grid">
                 {calculatorMode === "single-point" ? (
                   <label className="compact-field temperature-point-field">
-                    <span><Thermometer size={15} /> Equilibrium temperature</span>
+                    <span><Thermometer size={15} /> Evaluation temperature</span>
                     <div><input aria-invalid={invalidPoint} type="number" min={system.tempMin} max={system.tempMax} value={probeTemperature} onChange={(event) => { setProbeTemperature(Number(event.target.value)); setActiveWorkflowStep("model"); }} /><small>°C</small></div>
                   </label>
                 ) : (
                   <>
                     <label className="compact-field">
-                      <span><Thermometer size={15} /> {calculatorMode === "solidification" ? "Cooling start" : "T start"}</span>
+                      <span><Thermometer size={15} /> {calculatorMode === "solidification" ? "Cooling end · low" : "T start"}</span>
                       <div><input aria-invalid={invalidRange} type="number" min={system.tempMin} max={system.tempMax} value={tempMin} onChange={(event) => { setTempMin(Number(event.target.value)); setActiveWorkflowStep("model"); }} /><small>°C</small></div>
                     </label>
                     <label className="compact-field">
-                      <span><Thermometer size={15} /> {calculatorMode === "solidification" ? "Cooling end" : "T end"}</span>
+                      <span><Thermometer size={15} /> {calculatorMode === "solidification" ? "Cooling start · high" : "T end"}</span>
                       <div><input aria-invalid={invalidRange} type="number" min={system.tempMin} max={system.tempMax} value={tempMax} onChange={(event) => { setTempMax(Number(event.target.value)); setActiveWorkflowStep("model"); }} /><small>°C</small></div>
                     </label>
                   </>
@@ -650,11 +668,11 @@ export default function Home() {
 
             {runConfig.mode === "solidification" && solidificationMetrics && (
               <div className="solidification-metrics">
-                <div><span>First liquid &gt;1%</span><strong>{solidificationMetrics.incipientLiquid === null ? "Outside range" : `${solidificationMetrics.incipientLiquid.toFixed(0)} °C`}</strong></div>
-                <div><span>Liquid ≥99%</span><strong>{solidificationMetrics.fullyLiquid === null ? "Outside range" : `${solidificationMetrics.fullyLiquid.toFixed(0)} °C`}</strong></div>
-                <div><span>Transition window</span><strong>{solidificationMetrics.interval === null ? "—" : `${solidificationMetrics.interval.toFixed(0)} °C`}</strong></div>
-                <div><span>Solid at range start</span><strong>{(solidificationMetrics.solidAtMinimum * 100).toFixed(1)}%</strong></div>
-                <p><Info size={14} /> Derived from equilibrium-style heuristic samples; no back diffusion, segregation, or Scheil mass balance is solved.</p>
+                <div><span>First solid &gt;1%</span><strong>{solidificationMetrics.firstSolid === null ? "Outside range" : `≈ ${solidificationMetrics.firstSolid.toFixed(0)} °C`}</strong></div>
+                <div><span>Solid ≥99%</span><strong>{solidificationMetrics.nearlySolid === null ? "Outside range" : `≈ ${solidificationMetrics.nearlySolid.toFixed(0)} °C`}</strong></div>
+                <div><span>Solidification window</span><strong>{solidificationMetrics.interval === null ? "—" : `≈ ${solidificationMetrics.interval.toFixed(0)} °C`}</strong></div>
+                <div><span>Solid at cooling end</span><strong>{(solidificationMetrics.solidAtMinimum * 100).toFixed(1)}%</strong></div>
+                <p><Info size={14} /> High-to-low sampled proxy with ΔT ≈ {solidificationMetrics.sampleSpacing.toFixed(1)} °C. No back diffusion, segregation, or Scheil mass balance is solved.</p>
               </div>
             )}
 
@@ -662,14 +680,14 @@ export default function Home() {
               <div className="point-result" aria-label={`Phase weights at ${runConfig.probeTemperature} degrees Celsius`}>
                 <div className="point-temperature-card">
                   <Thermometer size={22} />
-                  <span>Calculated state</span>
+                  <span>Heuristic model output</span>
                   <strong>{runConfig.probeTemperature} °C</strong>
                   <small>{runConfig.pressure} bar reference pressure</small>
                 </div>
                 <div className="point-phase-list">
                   {resultSystem.phases.map((phase) => {
                     const fraction = pointResult[phase.key] ?? 0;
-                    const state = fraction >= 0.01 ? "present" : fraction > 0 ? "trace" : "not present";
+                    const state = fraction >= 0.01 ? "nonzero proxy weight" : fraction > 0 ? "trace proxy weight" : "zero proxy weight";
                     return (
                       <div className="point-phase-row" key={phase.key}>
                         <div><span style={{ backgroundColor: phase.color }} /><strong>{phase.label}</strong><em>{state}</em></div>
@@ -683,7 +701,7 @@ export default function Home() {
             ) : resultView === "plot" ? (
               <div className="chart-wrap" aria-label="Interactive normalized heuristic phase weight chart">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart accessibilityLayer aria-label={`${resultSystem.name} normalized heuristic phase weights from ${runConfig.tempMin} to ${runConfig.tempMax} degrees Celsius`} data={chartData} margin={{ top: 18, right: 18, left: -12, bottom: 4 }}>
+                  <LineChart accessibilityLayer aria-label={`${resultSystem.name} normalized heuristic phase weights from ${runConfig.tempMin} to ${runConfig.tempMax} degrees Celsius`} data={orderedPathData} margin={{ top: 18, right: 18, left: -12, bottom: 4 }}>
                     <CartesianGrid stroke="#dfe5ec" strokeDasharray="3 4" vertical={false} />
                     <XAxis dataKey="temperature" type="number" domain={[runConfig.tempMin, runConfig.tempMax]} tick={{ fill: "#657181", fontSize: 12 }} tickLine={false} axisLine={{ stroke: "#cdd5df" }} unit="°" />
                     <YAxis domain={[0, 1]} ticks={[0, 0.25, 0.5, 0.75, 1]} tick={{ fill: "#657181", fontSize: 12 }} tickLine={false} axisLine={false} />
@@ -703,7 +721,7 @@ export default function Home() {
                 <table>
                   <thead><tr><th>Temperature</th>{resultSystem.phases.map((phase) => <th key={phase.key}>{phase.label}</th>)}</tr></thead>
                   <tbody>
-                    {chartData.map((row) => (
+                    {orderedPathData.map((row) => (
                       <tr key={row.temperature}>
                         <td>{row.temperature} °C</td>
                         {resultSystem.phases.map((phase) => <td key={phase.key}>{((row[phase.key] ?? 0) * 100).toFixed(2)}%</td>)}
@@ -782,9 +800,9 @@ export default function Home() {
                   <p><strong>{selectedPack.title}</strong><small>{selectedPack.models} illustrative models · {selectedPack.phases} displayed phases · {selectedPack.status}</small></p>
                   <dl className="pack-detail-grid">
                     <div><dt>Components</dt><dd>{selectedPack.components}</dd></div>
-                    <div><dt>Validity</dt><dd>{selectedPack.validity}</dd></div>
+                    <div><dt>Illustrative input domain</dt><dd>{selectedPack.validity}</dd></div>
                     <div><dt>Capabilities</dt><dd>{selectedPack.capabilities}</dd></div>
-                    <div><dt>Provenance</dt><dd>{selectedPack.provenance}</dd></div>
+                    <div><dt>Implementation lineage</dt><dd>{selectedPack.provenance}</dd></div>
                   </dl>
                 </div>
               </div>
@@ -849,7 +867,7 @@ export default function Home() {
               </div>
             </div>
             <div className="coverage-kpis" aria-label="Iran ThermoCalc coverage summary">
-              <div><strong>3</strong><span>working educational workflows</span></div>
+              <div><strong>3</strong><span>interactive educational proxy workflows</span></div>
               <div><strong>6</strong><span>transparent binary systems</span></div>
               <div><strong>118</strong><span>element records</span></div>
               <div><strong>0</strong><span>proprietary datasets copied</span></div>
@@ -870,7 +888,7 @@ export default function Home() {
                       <th scope="row">{row.capability}</th>
                       <td>{row.official}</td>
                       <td>{row.iran}</td>
-                      <td><span className={`status-badge ${row.status}`}>{row.status === "working" ? "Working" : row.status === "proxy" ? "Proxy" : row.status === "roadmap" ? "Roadmap" : "Assessed data required"}</span></td>
+                      <td><span className={`status-badge ${row.status}`}>{row.status === "proxy" ? "Educational proxy" : row.status === "roadmap" ? "Roadmap" : row.status === "missing" ? "Not implemented" : "Solver + assessed data required"}</span></td>
                     </tr>
                   ))}
                 </tbody>

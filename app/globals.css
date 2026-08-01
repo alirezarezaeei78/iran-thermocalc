@@ -538,6 +538,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .status-badge.proxy { color: #8b6416; background: #fff1cc; }
 .status-badge.roadmap { color: #4658bd; background: #edf0ff; }
 .status-badge.data { color: #98414e; background: #fdebed; }
+.status-badge.missing { color: #5f6873; background: #eef1f4; }
 
 .database-gap-grid { margin-top: 18px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
 .database-gap-card { padding: 25px; border: 1px solid var(--line); background: white; }
@@ -618,6 +619,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 
 @media (max-width: 1180px) {
   .topbar { grid-template-columns: auto 1fr auto; padding: 0 18px; }
+  .primary-nav { min-width: 0; overflow-x: auto; }
+  .primary-nav button { flex: 0 0 auto; }
   .prototype-pill { display: none; }
   .workspace-grid { grid-template-columns: 210px 350px minmax(470px, 1fr); overflow-x: auto; }
   .elements-grid { grid-template-columns: repeat(4, minmax(126px, 1fr)); }

@@ -46,7 +46,7 @@ export const systems: SystemPreset[] = [
       { key: "cementite", label: "Cementite", color: "#f4a43b" },
       { key: "liquid", label: "Liquid", color: "#ec5b6f" },
     ],
-    note: "Educational Fe–C equilibrium approximation with eutectoid and eutectic landmarks.",
+    note: "Educational Fe–C topology heuristic with eutectoid and eutectic landmarks.",
   },
   {
     id: "al-si",
@@ -209,10 +209,10 @@ function fractionsFor(systemId: string, t: number, x: number): Record<string, nu
     if (t >= liquidus) return normalize({ liquid: 1, gamma: 0, gammaPrime: 0, beta: 0 });
     const gammaPrimeRaw = clamp((x - 4) / 16) * clamp((1150 - t) / 400);
     const betaRaw = clamp((x - 20) / 15) * clamp((1450 - t) / 500);
-    const orderedScale = gammaPrimeRaw + betaRaw > 0.95 ? 0.95 / (gammaPrimeRaw + betaRaw) : 1;
+    const orderedScale = gammaPrimeRaw + betaRaw > 1 ? 1 / (gammaPrimeRaw + betaRaw) : 1;
     const gammaPrime = gammaPrimeRaw * orderedScale;
     const beta = betaRaw * orderedScale;
-    return normalize({ gamma: 1 - gammaPrime - beta, gammaPrime, beta, liquid: 0 });
+    return normalize({ gamma: clamp(1 - gammaPrime - beta), gammaPrime, beta, liquid: 0 });
   }
 
   if (systemId === "ti-al") {
@@ -220,10 +220,10 @@ function fractionsFor(systemId: string, t: number, x: number): Record<string, nu
     if (t >= liquidus) return normalize({ liquid: 1, alpha: 0, beta: 0, gamma: 0 });
     const gammaRaw = clamp((x - 32) / 18) * clamp((1350 - t) / 500);
     const betaRaw = clamp((t - (882 + 4 * x)) / 350);
-    const orderedScale = gammaRaw + betaRaw > 0.95 ? 0.95 / (gammaRaw + betaRaw) : 1;
+    const orderedScale = gammaRaw + betaRaw > 1 ? 1 / (gammaRaw + betaRaw) : 1;
     const gamma = gammaRaw * orderedScale;
     const beta = betaRaw * orderedScale;
-    return normalize({ alpha: 1 - gamma - beta, beta, gamma, liquid: 0 });
+    return normalize({ alpha: clamp(1 - gamma - beta), beta, gamma, liquid: 0 });
   }
 
   if (systemId === "fe-cr") {
@@ -231,10 +231,10 @@ function fractionsFor(systemId: string, t: number, x: number): Record<string, nu
     if (t >= liquidus) return normalize({ liquid: 1, ferrite: 0, austenite: 0, sigma: 0 });
     const sigmaRaw = clamp((x - 12) / 20) * clamp(1 - Math.abs(t - 750) / 260) * 0.45;
     const austeniteRaw = clamp(1 - x / 28) * clamp(1 - Math.abs(t - 1050) / 430);
-    const solidScale = sigmaRaw + austeniteRaw > 0.95 ? 0.95 / (sigmaRaw + austeniteRaw) : 1;
+    const solidScale = sigmaRaw + austeniteRaw > 1 ? 1 / (sigmaRaw + austeniteRaw) : 1;
     const sigma = sigmaRaw * solidScale;
     const austenite = austeniteRaw * solidScale;
-    return normalize({ ferrite: 1 - sigma - austenite, austenite, sigma, liquid: 0 });
+    return normalize({ ferrite: clamp(1 - sigma - austenite), austenite, sigma, liquid: 0 });
   }
 
   throw new Error(`Unknown illustrative system: ${systemId}`);
@@ -298,12 +298,12 @@ export const dataPacks = [
     code: "IRFE",
     title: "Steel & Fe alloys",
     models: 2,
-    phases: 7,
+    phases: 5,
     status: "Heuristic",
     components: "Fe · C · Cr",
-    validity: "400–1600 °C · 1 bar",
+    validity: "400–1600 °C · 1 bar · unvalidated",
     capabilities: "Phase weights · transition and liquid-window proxies",
-    provenance: "Transparent Fe–C and Fe–Cr educational functions",
+    provenance: "Transparent Fe–C / Fe–Cr functions · no record-level scientific source",
   },
   {
     code: "IRAL",
@@ -312,9 +312,9 @@ export const dataPacks = [
     phases: 3,
     status: "Heuristic",
     components: "Al · Si",
-    validity: "350–750 °C · 1 bar",
+    validity: "350–750 °C · 1 bar · unvalidated",
     capabilities: "Eutectic topology · liquid-window proxy",
-    provenance: "Transparent Al–Si educational function",
+    provenance: "Transparent Al–Si function · no record-level scientific source",
   },
   {
     code: "IRNI",
@@ -323,9 +323,9 @@ export const dataPacks = [
     phases: 4,
     status: "Heuristic",
     components: "Ni · Al",
-    validity: "500–1700 °C · 1 bar",
+    validity: "500–1700 °C · 1 bar · unvalidated",
     capabilities: "γ / γ′ / β phase-window exploration",
-    provenance: "Transparent Ni–Al educational function",
+    provenance: "Transparent Ni–Al function · no record-level scientific source",
   },
   {
     code: "IRTI",
@@ -334,9 +334,9 @@ export const dataPacks = [
     phases: 4,
     status: "Heuristic",
     components: "Ti · Al",
-    validity: "500–1800 °C · 1 bar",
+    validity: "500–1800 °C · 1 bar · unvalidated",
     capabilities: "α / β / γ phase-window exploration",
-    provenance: "Transparent Ti–Al educational function",
+    provenance: "Transparent Ti–Al function · no record-level scientific source",
   },
   {
     code: "IRCU",
@@ -345,9 +345,9 @@ export const dataPacks = [
     phases: 2,
     status: "Heuristic",
     components: "Cu · Ni",
-    validity: "800–1550 °C · 1 bar",
+    validity: "800–1550 °C · 1 bar · unvalidated",
     capabilities: "Isomorphous solid/liquid exploration",
-    provenance: "Transparent Cu–Ni educational function",
+    provenance: "Transparent Cu–Ni function · no record-level scientific source",
   },
   {
     code: "IRPURE",
