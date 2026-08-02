@@ -64,7 +64,10 @@ test("keeps scientific scope and export guardrails explicit", async () => {
   assert.match(page, /high-to-low temperature cooling path/);
   assert.match(page, /Multicomponent lab/);
   assert.match(page, /Working 2–6 component input contract/);
-  assert.match(page, /No multicomponent thermodynamic or property result has been calculated/);
+  assert.match(page, /Study definition ready/);
+  assert.match(page, /This is not an input error/);
+  assert.match(page, /Scientific engine/);
+  assert.doesNotMatch(page, /Input valid · scientific execution blocked/);
   assert.match(page, /Candidate · human review required/);
   assert.match(page, /Machine learning proposes; reviewers promote/);
   assert.match(data, /Illustrative model produced an invalid phase weight/);

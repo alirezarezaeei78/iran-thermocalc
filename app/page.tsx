@@ -975,16 +975,20 @@ export default function Home() {
                   })}
                 </div>
 
-                <button className="validate-study-button" disabled={invalidStudy || selectedAnalyses.length === 0} onClick={() => setStudyReportReady(true)}><ShieldCheck size={17} /> Validate study readiness</button>
+                <button className="validate-study-button" disabled={invalidStudy || selectedAnalyses.length === 0} onClick={() => setStudyReportReady(true)}><ShieldCheck size={17} /> Check study &amp; engine readiness</button>
 
                 {!studyReportReady ? (
                   <div className="preflight-card">
                     <Gauge size={20} />
-                    <div><strong>Preflight has not run</strong><p>Validate the composition, conditions, requested properties, and solver dependencies before export.</p></div>
+                    <div><strong>Ready for a two-part preflight</strong><p>This checks the study definition and scientific-engine connection separately. It does not start a thermodynamic calculation.</p></div>
                   </div>
                 ) : (
                   <div className="readiness-report" aria-live="polite">
-                    <div className="readiness-heading"><span className="eyebrow">Preflight result</span><strong>Input valid · scientific execution blocked</strong></div>
+                    <div className="readiness-heading"><span className="eyebrow">Preflight complete</span><strong>Study definition ready</strong><small>Your composition, conditions, and requested outputs are valid.</small></div>
+                    <div className="readiness-summary" aria-label="Study and scientific engine status">
+                      <div className="ready"><CheckCircle2 size={17} /><span><small>Study setup</small><strong>Ready</strong></span></div>
+                      <div className="waiting"><Info size={17} /><span><small>Scientific engine</small><strong>Not connected</strong></span></div>
+                    </div>
                     <div className="readiness-list">
                       <div className="readiness-item pass"><CheckCircle2 size={16} /><span><strong>System contract valid</strong><small>{studyComponents.length} unique elements · composition normalized to 100 wt%</small></span></div>
                       <div className="readiness-item pass"><CheckCircle2 size={16} /><span><strong>Conditions specified</strong><small>{studyTempMin}–{studyTempMax} °C · 1 bar</small></span></div>
@@ -992,8 +996,11 @@ export default function Home() {
                       <div className="readiness-item gate"><Info size={16} /><span><strong>Equilibrium solver required</strong><small>No Gibbs-energy minimizer has executed this study.</small></span></div>
                       {selectedAnalyses.includes("sfe") && <div className="readiness-item gate"><Info size={16} /><span><strong>Validated SFE model required</strong><small>Stacking-fault energy needs an alloy-specific property model and validation range.</small></span></div>}
                     </div>
-                    <div className="no-result-notice"><ShieldCheck size={18} /><p><strong>No multicomponent thermodynamic or property result has been calculated.</strong>This is an auditable study definition, ready for a validated backend.</p></div>
-                    <button className="study-export-button" onClick={exportStudyContract}><Download size={16} /> Export solver input contract</button>
+                    <div className="no-result-notice"><ShieldCheck size={18} /><p><strong>This is not an input error.</strong>Your study definition is valid. Numerical multicomponent results become available only after an assessed CALPHAD database and equilibrium solver are connected; no thermodynamic or property result has been calculated.</p></div>
+                    <div className="study-readiness-actions">
+                      <button className="study-export-button" onClick={exportStudyContract}><Download size={16} /> Export solver input contract</button>
+                      <button className="study-coverage-button" onClick={() => setView("coverage")}><Microscope size={16} /> Compare calculation coverage</button>
+                    </div>
                     <span className="download-toast lab-download-status" role="status" aria-live="polite">{downloadMessage}</span>
                   </div>
                 )}
