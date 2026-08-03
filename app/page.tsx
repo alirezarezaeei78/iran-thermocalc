@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import periodicData from "periodic-table/data.json";
 import {
   Atom,
   BookOpen,
@@ -29,16 +28,8 @@ import {
   Trash2,
   Workflow,
 } from "lucide-react";
-import {
-  CartesianGrid,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
 import { alloyPresets, calculatePoint, calculateSystem, dataPacks, sources, systems } from "./data";
+import PhaseChart from "./PhaseChart";
 
 type View = "workspace" | "lab" | "database" | "coverage" | "method";
 type ResultView = "plot" | "table";
@@ -58,8 +49,6 @@ type ElementRecord = {
   density: number | string;
   groupBlock: string;
 };
-
-const elements = periodicData as ElementRecord[];
 
 const copy = {
   en: {
@@ -182,6 +171,9 @@ export default function Home() {
   });
   const [query, setQuery] = useState("");
   const [dataMode, setDataMode] = useState<"elements" | "alloys">("elements");
+  const [elements, setElements] = useState<ElementRecord[]>([]);
+  const [elementCatalogStatus, setElementCatalogStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [catalogRetry, setCatalogRetry] = useState(0);
   const [selectedPackCode, setSelectedPackCode] = useState("IRFE");
   const [downloadMessage, setDownloadMessage] = useState("");
   const [activeWorkflowStep, setActiveWorkflowStep] = useState<WorkflowStep>("model");
@@ -206,7 +198,11 @@ export default function Home() {
   const fixedCompositionTotal = studyComponents.filter((item) => !item.balance).reduce((sum, item) => sum + item.wtPercent, 0);
   const balanceComposition = Math.max(0, 100 - fixedCompositionTotal);
   const invalidStudy = studyComponents.length < 2 || studyComponents.length > 6 || fixedCompositionTotal >= 100 || studyTempMin >= studyTempMax;
-  const availableStudyElements = elements.filter((element) => !studyComponents.some((item) => item.symbol === element.symbol));
+  const elementBySymbol = useMemo(() => new Map(elements.map((element) => [element.symbol, element])), [elements]);
+  const availableStudyElements = useMemo(
+    () => elements.filter((element) => !studyComponents.some((item) => item.symbol === element.symbol)),
+    [elements, studyComponents],
+  );
   const compositionStep = system.maxComposition === 6.67 ? 0.01 : system.maxComposition > 50 ? 1 : 0.05;
   const invalidRange = tempMax <= tempMin || tempMin < system.tempMin || tempMax > system.tempMax;
   const invalidPoint = probeTemperature < system.tempMin || probeTemperature > system.tempMax;
@@ -257,7 +253,7 @@ export default function Home() {
       solidAtMinimum,
       sampleSpacing: (runConfig.tempMax - runConfig.tempMin) / Math.max(1, chartData.length - 1),
     };
-  }, [chartData, resultSystem]);
+  }, [chartData, resultSystem, runConfig.tempMin, runConfig.tempMax]);
 
   const filteredElements = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -267,7 +263,7 @@ export default function Home() {
         .toLowerCase()
         .includes(normalized),
     );
-  }, [query]);
+  }, [query, elements]);
 
   const filteredAlloys = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -281,6 +277,26 @@ export default function Home() {
     document.documentElement.lang = language;
     document.documentElement.dir = language === "fa" ? "rtl" : "ltr";
   }, [language]);
+
+  useEffect(() => {
+    if ((view !== "database" && view !== "lab") || elements.length > 0) return;
+    let cancelled = false;
+    void import("periodic-table/data.json")
+      .then((module) => {
+        if (cancelled) return;
+        setElements(module.default as ElementRecord[]);
+        setElementCatalogStatus("ready");
+      })
+      .catch(() => {
+        if (!cancelled) setElementCatalogStatus("error");
+      });
+    return () => { cancelled = true; };
+  }, [view, elements.length, catalogRetry]);
+
+  const switchDataMode = (nextMode: "elements" | "alloys") => {
+    setDataMode(nextMode);
+    setQuery("");
+  };
 
   const switchSystem = (nextId: string) => {
     const next = systems.find((item) => item.id === nextId) ?? systems[0];
@@ -328,7 +344,7 @@ export default function Home() {
     }, 480);
   };
 
-  const useAlloyInWorkspace = (alloyName: string) => {
+  const exploreAlloyInWorkspace = (alloyName: string) => {
     const mappings: Record<string, { systemId: string; composition: number }> = {
       "AISI 1040": { systemId: "fe-c", composition: 0.4 },
       "AISI 430": { systemId: "fe-cr", composition: 16.5 },
@@ -822,22 +838,14 @@ export default function Home() {
                 </div>
               </div>
             ) : resultView === "plot" ? (
-              <div className="chart-wrap" aria-label="Interactive normalized heuristic phase weight chart">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart accessibilityLayer aria-label={`${resultSystem.name} normalized heuristic phase weights from ${runConfig.tempMin} to ${runConfig.tempMax} degrees Celsius`} data={orderedPathData} margin={{ top: 18, right: 18, left: -12, bottom: 4 }}>
-                    <CartesianGrid stroke="#dfe5ec" strokeDasharray="3 4" vertical={false} />
-                    <XAxis dataKey="temperature" type="number" domain={[runConfig.tempMin, runConfig.tempMax]} tick={{ fill: "#657181", fontSize: 12 }} tickLine={false} axisLine={{ stroke: "#cdd5df" }} unit="°" />
-                    <YAxis domain={[0, 1]} ticks={[0, 0.25, 0.5, 0.75, 1]} tick={{ fill: "#657181", fontSize: 12 }} tickLine={false} axisLine={false} />
-                    <Tooltip
-                      formatter={(value, name) => [`${(Number(value) * 100).toFixed(1)}%`, String(name)]}
-                      labelFormatter={(label) => `${label} °C`}
-                      contentStyle={{ border: "1px solid #dfe5ec", borderRadius: 12, boxShadow: "0 12px 30px rgba(18,35,55,.14)" }}
-                    />
-                    {resultSystem.phases.map((phase) => (
-                      <Line key={phase.key} type="linear" dataKey={phase.key} name={phase.label} stroke={phase.color} strokeWidth={3} dot={false} activeDot={{ r: 5, strokeWidth: 2, fill: "white" }} />
-                    ))}
-                  </LineChart>
-                </ResponsiveContainer>
+              <div className="chart-wrap">
+                <PhaseChart
+                  data={orderedPathData}
+                  phases={resultSystem.phases}
+                  temperatureMin={runConfig.tempMin}
+                  temperatureMax={runConfig.tempMax}
+                  systemName={resultSystem.name}
+                />
               </div>
             ) : (
               <div className="table-wrap">
@@ -911,7 +919,7 @@ export default function Home() {
                 <div className="composition-editor" aria-label="Study composition in weight percent">
                   <div className="composition-editor-head"><span>Element</span><span>Composition</span><span>Action</span></div>
                   {studyComponents.map((component) => {
-                    const element = elements.find((item) => item.symbol === component.symbol);
+                    const element = elementBySymbol.get(component.symbol);
                     return (
                       <div className="composition-row" key={component.symbol}>
                         <div className="component-symbol"><strong>{component.symbol}</strong><span>{element?.name ?? "Element"}</span></div>
@@ -933,12 +941,15 @@ export default function Home() {
                 <div className="add-component-row">
                   <label>
                     <span className="sr-only">Element to add</span>
-                    <select aria-label="Element to add" value={newElementSymbol} onChange={(event) => setNewElementSymbol(event.target.value)} disabled={studyComponents.length >= 6}>
-                      {availableStudyElements.map((element) => <option key={element.atomicNumber} value={element.symbol}>{element.symbol} · {element.name}</option>)}
+                    <select aria-label="Element to add" value={newElementSymbol} onChange={(event) => setNewElementSymbol(event.target.value)} disabled={studyComponents.length >= 6 || elements.length === 0}>
+                      {elements.length === 0
+                        ? <option value={newElementSymbol}>{elementCatalogStatus === "error" ? "Element catalog unavailable" : "Loading element catalog…"}</option>
+                        : availableStudyElements.map((element) => <option key={element.atomicNumber} value={element.symbol}>{element.symbol} · {element.name}</option>)}
                     </select>
                   </label>
-                  <button onClick={addStudyComponent} disabled={studyComponents.length >= 6 || !newElementSymbol}><Plus size={16} /> Add component</button>
+                  <button onClick={addStudyComponent} disabled={studyComponents.length >= 6 || !newElementSymbol || elements.length === 0}><Plus size={16} /> Add component</button>
                 </div>
+                {elementCatalogStatus === "error" && <button className="catalog-retry" onClick={() => { setElementCatalogStatus("idle"); setCatalogRetry((value) => value + 1); }}>Retry element catalog</button>}
 
                 <div className={`study-total ${invalidStudy ? "invalid" : ""}`} role="status">
                   <div><span>Specified</span><strong>{fixedCompositionTotal.toFixed(2)} wt%</strong></div>
@@ -1110,8 +1121,8 @@ export default function Home() {
             <section className="catalog-panel panel">
               <div className="catalog-toolbar">
                 <div className="segmented catalog-switch" aria-label="Catalog type">
-                  <button aria-pressed={dataMode === "elements"} className={dataMode === "elements" ? "active" : ""} onClick={() => setDataMode("elements")}><Atom size={15} /> Elements</button>
-                  <button aria-pressed={dataMode === "alloys"} className={dataMode === "alloys" ? "active" : ""} onClick={() => setDataMode("alloys")}><Layers3 size={15} /> Alloy presets</button>
+                  <button aria-pressed={dataMode === "elements"} className={dataMode === "elements" ? "active" : ""} onClick={() => switchDataMode("elements")}><Atom size={15} /> Elements</button>
+                  <button aria-pressed={dataMode === "alloys"} className={dataMode === "alloys" ? "active" : ""} onClick={() => switchDataMode("alloys")}><Layers3 size={15} /> Alloy presets</button>
                 </div>
                 <div className="search-field">
                   <Search size={17} />
@@ -1135,8 +1146,12 @@ export default function Home() {
 
               {dataMode === "elements" ? (
                 <>
-                  <div className="catalog-intro"><p><strong>{filteredElements.length} {filteredElements.length === 1 ? "element" : "elements"}</strong>Open periodic reference catalog</p><span>periodic-table 0.0.8 · ISC license</span></div>
-                  {filteredElements.length === 0 ? (
+                  <div className="catalog-intro"><p><strong>{elementCatalogStatus === "ready" ? `${filteredElements.length} ${filteredElements.length === 1 ? "element" : "elements"}` : "Element catalog"}</strong>Open periodic reference catalog</p><span>periodic-table 0.0.8 · ISC license</span></div>
+                  {elementCatalogStatus === "idle" || elementCatalogStatus === "loading" ? (
+                    <div className="catalog-loading" role="status"><span className="spinner" /><h3>Loading the element catalog…</h3><p>The calculation workspace stays lightweight until this data is needed.</p></div>
+                  ) : elementCatalogStatus === "error" ? (
+                    <div className="empty-state"><Info size={22} /><h3>The element catalog did not load</h3><p>Your calculation data is safe. Retry this section without reloading the app.</p><button onClick={() => { setElementCatalogStatus("idle"); setCatalogRetry((value) => value + 1); }}>Retry catalog</button></div>
+                  ) : filteredElements.length === 0 ? (
                     <div className="empty-state"><Search size={22} /><h3>No elements match “{query}”</h3><p>Try an element symbol, atomic number, or group name.</p><button onClick={() => setQuery("")}>Clear search</button></div>
                   ) : <div className="elements-grid">
                     {filteredElements.map((element) => (
@@ -1166,7 +1181,7 @@ export default function Home() {
                         <p>{alloy.composition}</p>
                         <footer><span>Typical use</span><strong>{alloy.use}</strong></footer>
                         {["AISI 1040", "AISI 430", "A356", "Ti–6Al–4V"].includes(alloy.name) ? (
-                          <button className="use-alloy-button" onClick={() => useAlloyInWorkspace(alloy.name)}>Explore simplified binary →</button>
+                          <button className="use-alloy-button" onClick={() => exploreAlloyInWorkspace(alloy.name)}>Explore simplified binary →</button>
                         ) : (
                           <span className="catalog-only">Catalog reference only</span>
                         )}

@@ -85,3 +85,22 @@ test("keeps scientific scope and export guardrails explicit", async () => {
   assert.match(researchMigration, /ml_assisted|extraction_method/);
   assert.match(researchMigration, /dataset_evidence/);
 });
+
+test("keeps the initial workspace lightweight and local startup recoverable", async () => {
+  const [page, chart, styles, server] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/PhaseChart.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+    readFile(new URL("../scripts/serve-local.mjs", import.meta.url), "utf8"),
+  ]);
+
+  assert.doesNotMatch(page, /from "recharts"/);
+  assert.doesNotMatch(page, /import periodicData from/);
+  assert.match(page, /import\("periodic-table\/data\.json"\)/);
+  assert.match(chart, /ResizeObserver/);
+  assert.match(chart, /ArrowLeft/);
+  assert.match(styles, /content-visibility: auto/);
+  assert.doesNotMatch(styles, /\.project-panel \{ display: none; \}/);
+  assert.match(server, /EADDRINUSE/);
+  assert.match(server, /PORT=3001 npm run dev/);
+});

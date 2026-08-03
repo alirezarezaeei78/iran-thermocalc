@@ -106,6 +106,15 @@ const server = createServer(async (incoming, outgoing) => {
   }
 });
 
+server.on("error", (error) => {
+  if (error?.code === "EADDRINUSE") {
+    console.error(`\nPort ${port} is already in use. Close the other preview or run: PORT=3001 npm run dev\n`);
+  } else {
+    console.error("\nIran ThermoCalc could not start:", error?.message || error, "\n");
+  }
+  process.exitCode = 1;
+});
+
 const localAddress = Object.values(networkInterfaces())
   .flat()
   .find((entry) => entry?.family === "IPv4" && !entry.internal)?.address;
