@@ -1,104 +1,54 @@
-# vinext-starter
+# Iran ThermoCalc
 
-A clean full-stack starter running on
-[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
-Drizzle support.
+Iran ThermoCalc is a local-first materials screening application with:
 
-## Prerequisites
+- interactive binary educational phase models;
+- a deterministic 2–6 component local screening engine;
+- estimated phase-weight, mixing-energy, solid-solution, intermetallic, TCP and SFE indices;
+- 118 local element records and 24 alloy presets;
+- local CSV and JSON exports with scientific-scope warnings;
+- no API key, account, usage token or remote calculation service.
 
-- Node.js `>=22.13.0`
+The bundled multicomponent engine is an engineering-screening model. It is not a replacement for an assessed CALPHAD database and must not be used as certified equilibrium data.
 
-## Quick Start
+## Requirements
+
+- Node.js 22.13 or newer
+
+## Run locally
 
 ```bash
+cd "/Users/alireza/Desktop/thermo calc"
 npm install
 npm run dev
-npm run build
 ```
 
-`npm run dev` starts the validated build at `http://localhost:3000`. Use
-`npm run dev:hot` when editing source code and you need hot reload.
+Open `http://localhost:3000`.
 
-This starter does not use `wrangler.jsonc`.
+The terminal also prints the current same-Wi-Fi address. That address can change when the Mac changes networks.
 
-## Included Shape
+If port 3000 is already occupied:
 
-- edit site code under `app/`
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
-
-## Workspace Auth Headers
-
-Signed-in visitors receive both `oai-authenticated-user-id` and `oai-authenticated-user-email`. Private Sites require every visitor to sign in; public Sites may also have anonymous visitors, for whom neither header is present.
-
-The user ID is stable for the same user on the same Site and different across Sites. Email and name are intended for display or contact purposes.
-
-SIWC-authenticated workspace sites may also receive
-`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
-`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
-`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
-
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const userId = requestHeaders.get("oai-authenticated-user-id");
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
+```bash
+PORT=3001 npm run dev
 ```
 
-## Optional Dispatch-Owned ChatGPT Sign-In
+Then open `http://localhost:3001`.
 
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
-optional or required ChatGPT sign-in:
+## Development and verification
 
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
-  anonymous visitors through Sign in with ChatGPT.
-- Use `chatGPTSignInPath(returnTo)` and `chatGPTSignOutPath(returnTo)` for
-  browser links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in
-  or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because
-  they depend on per-request identity headers.
+```bash
+npm run dev:hot
+npm run lint
+npm test
+```
 
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
-OAuth cookies, and identity header injection. Do not implement app routes for
-those reserved paths. Routes that do not import and call the helper remain
-anonymous-compatible.
+- `npm run dev` serves the last validated production build.
+- `npm run dev:hot` enables source hot reload.
+- `npm test` builds the app and runs rendered-shell plus local-engine invariant tests.
 
-SIWC establishes identity only; it does not prove workspace membership. Use the
-Sites hosting platform's access policy controls for workspace-wide restrictions,
-or enforce explicit server-side membership or allowlist checks.
+## Scientific scope
 
-Use SIWC for account pages, user-specific dashboards, saved records, and write
-actions tied to the current ChatGPT user. Leave public content anonymous.
+The local multicomponent engine uses composition normalization, atomic-mass conversion, local melting-point records, ideal configurational entropy, a small transparent pair-interaction table, crystal-structure tendencies and refractory/ordered-former screening rules. It performs zero remote requests.
 
-## Useful Commands
-
-- `npm run dev`: run the validated build locally
-- `npm run dev:hot`: start source-code development with hot reload
-- `npm run build`: verify the vinext build output
-- `npm test`: build the starter and verify its rendered loading skeleton
-- `npm run db:generate`: generate Drizzle migrations after schema changes
-
-## Learn More
-
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+For production-grade equilibrium, diffusion, precipitation or certified phase-boundary work, connect or implement validated thermodynamic and kinetic datasets under the appropriate licenses and validate against reference cases.

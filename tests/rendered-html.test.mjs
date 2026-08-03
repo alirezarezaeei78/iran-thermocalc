@@ -63,10 +63,12 @@ test("keeps scientific scope and export guardrails explicit", async () => {
   assert.match(page, /safeMin = runConfig\.mode === "single-point"/);
   assert.match(page, /high-to-low temperature cooling path/);
   assert.match(page, /Multicomponent lab/);
-  assert.match(page, /Working 2–6 component input contract/);
-  assert.match(page, /Study definition ready/);
-  assert.match(page, /This is not an input error/);
-  assert.match(page, /Scientific engine/);
+  assert.match(page, /Working 2–6 component local screening engine/);
+  assert.match(page, /Run local simulation/);
+  assert.match(page, /0 remote requests/);
+  assert.match(page, /Local calculation completed—not CALPHAD/);
+  assert.match(page, /runLocalMulticomponentStudy/);
+  assert.doesNotMatch(page, /Scientific engine<\/small><strong>Not connected/);
   assert.doesNotMatch(page, /Input valid · scientific execution blocked/);
   assert.match(page, /Candidate · human review required/);
   assert.match(page, /Machine learning proposes; reviewers promote/);

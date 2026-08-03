@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { alloyPresets, calculatePoint, calculateSystem, dataPacks, sources, systems } from "./data";
 import PhaseChart from "./PhaseChart";
+import { runLocalMulticomponentStudy, type LocalStudyResult } from "./localMulticomponent";
 
 type View = "workspace" | "lab" | "database" | "coverage" | "method";
 type ResultView = "plot" | "table";
@@ -100,11 +101,11 @@ const calculatorModes: { id: CalculatorMode; label: string; description: string 
 const capabilityBenchmark = [
   { capability: "Single equilibrium", official: "Built-in calculator", iran: "Educational phase-weight proxy", status: "proxy" },
   { capability: "One-axis calculation", official: "Built-in calculator", iran: "Educational proxy · plot, table, exports", status: "proxy" },
-  { capability: "Multicomponent system definition", official: "Arbitrary components with assessed databases", iran: "Working 2–6 component input contract · solver gated", status: "roadmap" },
+  { capability: "Multicomponent system definition", official: "Arbitrary components with assessed databases", iran: "Working 2–6 component local screening engine", status: "proxy" },
   { capability: "Grid calculation", official: "Built-in calculator", iran: "Roadmap", status: "roadmap" },
-  { capability: "Phase diagram", official: "Built-in calculator", iran: "Roadmap · boundary solver needed", status: "roadmap" },
+  { capability: "Phase diagram", official: "Built-in calculator", iran: "Local estimated phase-weight windows", status: "proxy" },
   { capability: "Scheil solidification", official: "Built-in calculator", iran: "Cooling-path proxy only", status: "proxy" },
-  { capability: "Property models", official: "Built-in + model libraries", iran: "Roadmap", status: "roadmap" },
+  { capability: "Property models", official: "Built-in + model libraries", iran: "Local SFE, ordering and TCP screening indices", status: "proxy" },
   { capability: "Material-to-material", official: "Built-in calculator", iran: "Not implemented", status: "missing" },
   { capability: "Aqueous / Pourbaix", official: "Built-in calculators", iran: "Not implemented", status: "missing" },
   { capability: "Parameter optimization", official: "PARROT module", iran: "Not implemented", status: "missing" },
@@ -121,13 +122,13 @@ const studyTemplates: { id: string; name: string; family: string; components: St
 ];
 
 const analysisTargets = [
-  { id: "phase-diagram", label: "Phase diagram", detail: "Stable phase fields and boundaries", requirement: "CALPHAD database + Gibbs minimizer" },
-  { id: "gibbs-energy", label: "Gibbs energy", detail: "G(T, P, x) by phase", requirement: "Assessed Gibbs-energy parameters" },
-  { id: "phase-stability", label: "Phase stability", detail: "Stable / metastable phase ranking", requirement: "Global equilibrium solver" },
-  { id: "sfe", label: "Stacking-fault energy", detail: "SFE vs composition and temperature", requirement: "Validated SFE property model" },
-  { id: "solubility", label: "Solubility limits", detail: "Composition limits by phase", requirement: "Assessed phase models" },
-  { id: "intermetallic", label: "Intermetallics", detail: "Ordered compound phase screening", requirement: "Sublattice models + database" },
-  { id: "tcp", label: "TCP phases", detail: "σ, μ, Laves and related risk", requirement: "Phase-complete superalloy database" },
+  { id: "phase-diagram", label: "Phase diagram", detail: "Estimated phase-weight windows", requirement: "Local structure-tendency model" },
+  { id: "gibbs-energy", label: "Mixing energy", detail: "Ideal entropy + pair-interaction proxy", requirement: "Local deterministic estimate" },
+  { id: "phase-stability", label: "Phase stability", detail: "Estimated phase tendency ranking", requirement: "Local structure screening" },
+  { id: "sfe", label: "SFE screening", detail: "Unitless stacking-fault tendency index", requirement: "Local screening index" },
+  { id: "solubility", label: "Solid-solution tendency", detail: "Competition with ordered and TCP phases", requirement: "Local competition model" },
+  { id: "intermetallic", label: "Intermetallics", detail: "Ordered-compound tendency screening", requirement: "Local composition-pair model" },
+  { id: "tcp", label: "TCP phases", detail: "σ, μ, Laves family risk screening", requirement: "Local refractory/matrix model" },
 ] as const;
 
 const researchSources = [
@@ -184,8 +185,9 @@ export default function Home() {
   const [studyTempMin, setStudyTempMin] = useState(studyTemplates[0].temperature[0]);
   const [studyTempMax, setStudyTempMax] = useState(studyTemplates[0].temperature[1]);
   const [newElementSymbol, setNewElementSymbol] = useState("C");
-  const [selectedAnalyses, setSelectedAnalyses] = useState<string[]>(["phase-diagram", "gibbs-energy", "phase-stability", "solubility", "intermetallic", "tcp"]);
-  const [studyReportReady, setStudyReportReady] = useState(false);
+  const [selectedAnalyses, setSelectedAnalyses] = useState<string[]>(["phase-diagram", "gibbs-energy", "phase-stability", "sfe", "solubility", "intermetallic", "tcp"]);
+  const [studyResult, setStudyResult] = useState<LocalStudyResult | null>(null);
+  const [isStudyRunning, setIsStudyRunning] = useState(false);
   const [researchSource, setResearchSource] = useState(researchSources[0].name);
   const [researchIdentifier, setResearchIdentifier] = useState("");
   const [researchProperty, setResearchProperty] = useState("Phase equilibria");
@@ -373,12 +375,12 @@ export default function Home() {
     setStudyComponents(template.components.map((item) => ({ ...item })));
     setStudyTempMin(template.temperature[0]);
     setStudyTempMax(template.temperature[1]);
-    setStudyReportReady(false);
+    setStudyResult(null);
   };
 
   const updateStudyComponent = (symbol: string, value: number) => {
     setStudyComponents((current) => current.map((item) => item.symbol === symbol ? { ...item, wtPercent: Math.max(0, Math.min(99.99, value)) } : item));
-    setStudyReportReady(false);
+    setStudyResult(null);
   };
 
   const addStudyComponent = () => {
@@ -386,17 +388,17 @@ export default function Home() {
     setStudyComponents((current) => [...current, { symbol: newElementSymbol, wtPercent: 0.1 }]);
     const remaining = elements.find((element) => !studyComponents.some((item) => item.symbol === element.symbol) && element.symbol !== newElementSymbol);
     if (remaining) setNewElementSymbol(remaining.symbol);
-    setStudyReportReady(false);
+    setStudyResult(null);
   };
 
   const removeStudyComponent = (symbol: string) => {
     setStudyComponents((current) => current.filter((item) => item.symbol !== symbol));
-    setStudyReportReady(false);
+    setStudyResult(null);
   };
 
   const toggleAnalysisTarget = (targetId: string) => {
     setSelectedAnalyses((current) => current.includes(targetId) ? current.filter((item) => item !== targetId) : [...current, targetId]);
-    setStudyReportReady(false);
+    setStudyResult(null);
   };
 
   const downloadBlob = (blob: Blob, filename: string) => {
@@ -412,27 +414,39 @@ export default function Home() {
     window.setTimeout(() => setDownloadMessage(""), 2500);
   };
 
-  const exportStudyContract = () => {
-    const components = studyComponents.map((item) => ({
-      element: item.symbol,
-      wtPercent: item.balance ? Number(balanceComposition.toFixed(4)) : item.wtPercent,
-      dependent: Boolean(item.balance),
-    }));
-    const contract = {
+  const runLocalStudy = () => {
+    if (invalidStudy || selectedAnalyses.length === 0 || elements.length === 0 || isStudyRunning) return;
+    setIsStudyRunning(true);
+    window.setTimeout(() => {
+      const components = studyComponents.map((component) => ({
+        symbol: component.symbol,
+        wtPercent: component.balance ? balanceComposition : component.wtPercent,
+      }));
+      setStudyResult(runLocalMulticomponentStudy(components, elements, studyTempMin, studyTempMax));
+      setIsStudyRunning(false);
+    }, 260);
+  };
+
+  const exportLocalStudyJson = () => {
+    if (!studyResult) return;
+    const artifact = {
       product: "Iran ThermoCalc",
-      contractVersion: "multicomponent-study-0.1",
+      exportVersion: "local-multicomponent-screening-1.0",
       exportedAt: new Date().toISOString(),
-      warning: "Input contract only. No multicomponent thermodynamic or property result has been calculated.",
-      system: components.map((item) => item.element).join("-"),
-      components,
-      conditions: { temperatureC: [studyTempMin, studyTempMax], pressureBar: 1, compositionBasis: "wt%" },
+      warning: "Local deterministic screening estimate; not an assessed CALPHAD equilibrium calculation.",
       requestedAnalyses: analysisTargets.filter((item) => selectedAnalyses.includes(item.id)),
-      executionGate: {
-        status: "blocked_until_solver_and_assessed_data_are_connected",
-        required: ["phase-complete assessed CALPHAD database", "Gibbs-energy minimizer", "validated property model for stacking-fault energy", "validation cases"],
-      },
+      result: studyResult,
     };
-    downloadBlob(new Blob([JSON.stringify(contract, null, 2)], { type: "application/json;charset=utf-8" }), `iran-thermocalc-${contract.system.toLowerCase()}-study-contract.json`);
+    downloadBlob(new Blob([JSON.stringify(artifact, null, 2)], { type: "application/json;charset=utf-8" }), `iran-thermocalc-${studyResult.system.toLowerCase()}-local-result.json`);
+  };
+
+  const exportLocalStudyCsv = () => {
+    if (!studyResult) return;
+    const rows = [
+      "temperature_c,liquid,fcc,bcc,hcp,intermetallic,tcp,gibbs_mix_kj_mol,sfe_index",
+      ...studyResult.points.map((point) => [point.temperature, point.liquid, point.fcc, point.bcc, point.hcp, point.intermetallic, point.tcp, point.gibbsMixKJMol, point.sfeIndex].join(",")),
+    ];
+    downloadBlob(new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8" }), `iran-thermocalc-${studyResult.system.toLowerCase()}-local-result.csv`);
   };
 
   const addCurationJob = () => {
@@ -883,8 +897,8 @@ export default function Home() {
           <section className="lab-hero">
             <div className="lab-hero-copy">
               <span className="eyebrow"><Workflow size={15} /> Voice brief → product workflow</span>
-              <h1>From a six-element alloy idea to an auditable solver contract.</h1>
-              <p>Compose real 2–6 component studies, choose the properties you need, and collect traceable evidence without presenting an unvalidated estimate as a thermodynamic result.</p>
+              <h1>From a six-element alloy idea to an instant local screening run.</h1>
+              <p>Compose real 2–6 component studies and calculate deterministic phase, mixing-energy, stability and risk estimates directly in the app—without tokens or external services.</p>
               <div className="lab-mode-switch" aria-label="Multicomponent lab mode">
                 <button aria-pressed={labMode === "study"} className={labMode === "study" ? "active" : ""} onClick={() => setLabMode("study")}><FlaskConical size={16} /> Study composer</button>
                 <button aria-pressed={labMode === "research"} className={labMode === "research" ? "active" : ""} onClick={() => setLabMode("research")}><FileSearch size={16} /> Research pipeline</button>
@@ -959,8 +973,8 @@ export default function Home() {
                 {fixedCompositionTotal >= 100 && <p className="validation-error" role="alert">Specified components must total less than 100 wt% so the balance element remains positive.</p>}
 
                 <div className="study-conditions">
-                  <label><span><Thermometer size={15} /> Temperature start</span><div><input aria-label="Study minimum temperature" type="number" value={studyTempMin} onChange={(event) => { setStudyTempMin(Number(event.target.value)); setStudyReportReady(false); }} /><small>°C</small></div></label>
-                  <label><span><Thermometer size={15} /> Temperature end</span><div><input aria-label="Study maximum temperature" type="number" value={studyTempMax} onChange={(event) => { setStudyTempMax(Number(event.target.value)); setStudyReportReady(false); }} /><small>°C</small></div></label>
+                  <label><span><Thermometer size={15} /> Temperature start</span><div><input aria-label="Study minimum temperature" type="number" value={studyTempMin} onChange={(event) => { setStudyTempMin(Number(event.target.value)); setStudyResult(null); }} /><small>°C</small></div></label>
+                  <label><span><Thermometer size={15} /> Temperature end</span><div><input aria-label="Study maximum temperature" type="number" value={studyTempMax} onChange={(event) => { setStudyTempMax(Number(event.target.value)); setStudyResult(null); }} /><small>°C</small></div></label>
                   <div><span><Gauge size={15} /> Pressure</span><strong>1 bar</strong><small>reference</small></div>
                 </div>
                 {studyTempMin >= studyTempMax && <p className="validation-error" role="alert">Temperature end must be higher than temperature start.</p>}
@@ -971,7 +985,7 @@ export default function Home() {
                   <div><span className="eyebrow">02 · Scope</span><h2>Requested analyses</h2></div>
                   <span className="component-count">{selectedAnalyses.length} selected</span>
                 </div>
-                <p className="section-intro">Each target declares the scientific dependency needed before execution. Selection creates an implementation-ready input contract; it does not invent an answer.</p>
+                <p className="section-intro">Choose the outputs you need, then run the deterministic screening engine directly in this browser. It uses local composition and element data only—no token, account, API, or remote solver.</p>
                 <div className="analysis-target-grid">
                   {analysisTargets.map((target) => {
                     const selected = selectedAnalyses.includes(target.id);
@@ -986,31 +1000,58 @@ export default function Home() {
                   })}
                 </div>
 
-                <button className="validate-study-button" disabled={invalidStudy || selectedAnalyses.length === 0} onClick={() => setStudyReportReady(true)}><ShieldCheck size={17} /> Check study &amp; engine readiness</button>
+                <button className="validate-study-button" disabled={invalidStudy || selectedAnalyses.length === 0 || elements.length === 0 || isStudyRunning} onClick={runLocalStudy}>
+                  {isStudyRunning ? <span className="spinner" /> : <Play size={17} fill="currentColor" />} {isStudyRunning ? "Running locally…" : "Run local simulation"}
+                </button>
 
-                {!studyReportReady ? (
+                {!studyResult ? (
                   <div className="preflight-card">
                     <Gauge size={20} />
-                    <div><strong>Ready for a two-part preflight</strong><p>This checks the study definition and scientific-engine connection separately. It does not start a thermodynamic calculation.</p></div>
+                    <div><strong>{elements.length === 0 ? "Loading the local element dataset…" : "Ready to calculate locally"}</strong><p>The engine runs 48 temperature states inside the app. Nothing is sent to an external service, and no usage token is consumed.</p></div>
                   </div>
                 ) : (
                   <div className="readiness-report" aria-live="polite">
-                    <div className="readiness-heading"><span className="eyebrow">Preflight complete</span><strong>Study definition ready</strong><small>Your composition, conditions, and requested outputs are valid.</small></div>
-                    <div className="readiness-summary" aria-label="Study and scientific engine status">
-                      <div className="ready"><CheckCircle2 size={17} /><span><small>Study setup</small><strong>Ready</strong></span></div>
-                      <div className="waiting"><Info size={17} /><span><small>Scientific engine</small><strong>Not connected</strong></span></div>
+                    <div className="readiness-heading"><span className="eyebrow">Local run complete</span><strong>{studyResult.system} screening results</strong><small>Calculated entirely inside Iran ThermoCalc with the local estimate engine.</small></div>
+                    <div className="readiness-summary" aria-label="Study and local engine status">
+                      <div className="ready"><CheckCircle2 size={17} /><span><small>Study setup</small><strong>Valid</strong></span></div>
+                      <div className="ready"><CheckCircle2 size={17} /><span><small>Local engine</small><strong>Completed</strong></span></div>
                     </div>
                     <div className="readiness-list">
                       <div className="readiness-item pass"><CheckCircle2 size={16} /><span><strong>System contract valid</strong><small>{studyComponents.length} unique elements · composition normalized to 100 wt%</small></span></div>
-                      <div className="readiness-item pass"><CheckCircle2 size={16} /><span><strong>Conditions specified</strong><small>{studyTempMin}–{studyTempMax} °C · 1 bar</small></span></div>
-                      <div className="readiness-item gate"><Info size={16} /><span><strong>Assessed phase database required</strong><small>No licensed, phase-complete CALPHAD parameter set is connected.</small></span></div>
-                      <div className="readiness-item gate"><Info size={16} /><span><strong>Equilibrium solver required</strong><small>No Gibbs-energy minimizer has executed this study.</small></span></div>
-                      {selectedAnalyses.includes("sfe") && <div className="readiness-item gate"><Info size={16} /><span><strong>Validated SFE model required</strong><small>Stacking-fault energy needs an alloy-specific property model and validation range.</small></span></div>}
+                      <div className="readiness-item pass"><CheckCircle2 size={16} /><span><strong>48 states calculated</strong><small>{studyTempMin}–{studyTempMax} °C · 1 bar reference</small></span></div>
+                      <div className="readiness-item pass"><CheckCircle2 size={16} /><span><strong>Local-only execution</strong><small>0 remote requests · 0 API tokens · deterministic model v{studyResult.engine.version}</small></span></div>
                     </div>
-                    <div className="no-result-notice"><ShieldCheck size={18} /><p><strong>This is not an input error.</strong>Your study definition is valid. Numerical multicomponent results become available only after an assessed CALPHAD database and equilibrium solver are connected; no thermodynamic or property result has been calculated.</p></div>
+
+                    <div className="local-result-kpis">
+                      <div><span>Estimated solidus</span><strong>{studyResult.summary.estimatedSolidusC.toFixed(0)} °C</strong></div>
+                      <div><span>Estimated liquidus</span><strong>{studyResult.summary.estimatedLiquidusC.toFixed(0)} °C</strong></div>
+                      <div><span>Mixing ΔG proxy</span><strong>{studyResult.summary.gibbsMixAtMidpointKJMol.toFixed(2)} kJ/mol</strong></div>
+                      <div><span>Dominant midpoint tendency</span><strong>{studyResult.summary.dominantPhase}</strong></div>
+                    </div>
+
+                    <div className="local-study-chart">
+                      <div className="local-result-heading"><div><span className="eyebrow">Phase screening</span><h3>Estimated phase weights vs temperature</h3></div><span>48 local points</span></div>
+                      <div className="chart-wrap">
+                        <PhaseChart data={studyResult.points} phases={studyResult.phases} temperatureMin={studyTempMin} temperatureMax={studyTempMax} systemName={studyResult.system} />
+                      </div>
+                      <div className="phase-legend local-phase-legend">
+                        {studyResult.phases.map((phase) => <div key={phase.key}><span style={{ backgroundColor: phase.color }} /><p><strong>{phase.label}</strong><small>Local screening weight</small></p></div>)}
+                      </div>
+                    </div>
+
+                    <div className="local-screening-grid">
+                      {selectedAnalyses.includes("intermetallic") && <div><span>Intermetallic tendency</span><strong>{studyResult.summary.intermetallicRisk}</strong><em>{studyResult.summary.intermetallicIndex.toFixed(1)} / 100</em></div>}
+                      {selectedAnalyses.includes("tcp") && <div><span>TCP tendency</span><strong>{studyResult.summary.tcpRisk}</strong><em>{studyResult.summary.tcpIndex.toFixed(1)} / 100</em></div>}
+                      {selectedAnalyses.includes("solubility") && <div><span>Solid-solution index</span><strong>{studyResult.summary.solidSolutionIndex.toFixed(1)}</strong><em>higher favors solution phases</em></div>}
+                      {selectedAnalyses.includes("sfe") && <div><span>SFE screening index</span><strong>{studyResult.summary.sfeIndexAtMidpoint.toFixed(1)}</strong><em>unitless · not mJ/m²</em></div>}
+                      {selectedAnalyses.includes("gibbs-energy") && <div><span>Ideal mixing entropy</span><strong>{studyResult.summary.mixingEntropyJMolK.toFixed(2)}</strong><em>J/mol·K</em></div>}
+                      {selectedAnalyses.includes("phase-stability") && <div><span>Weighted melting point</span><strong>{studyResult.summary.weightedMeltingPointC.toFixed(0)} °C</strong><em>composition-weighted estimate</em></div>}
+                    </div>
+
+                    <div className="no-result-notice local-model-notice"><ShieldCheck size={18} /><p><strong>Local calculation completed—not CALPHAD.</strong>These numerical values are deterministic engineering-screening estimates. A licensed assessed database is still required only when you need certified equilibrium accuracy.</p></div>
                     <div className="study-readiness-actions">
-                      <button className="study-export-button" onClick={exportStudyContract}><Download size={16} /> Export solver input contract</button>
-                      <button className="study-coverage-button" onClick={() => setView("coverage")}><Microscope size={16} /> Compare calculation coverage</button>
+                      <button className="study-export-button" onClick={exportLocalStudyJson}><Download size={16} /> Export result JSON</button>
+                      <button className="study-coverage-button" onClick={exportLocalStudyCsv}><Download size={16} /> Export result CSV</button>
                     </div>
                     <span className="download-toast lab-download-status" role="status" aria-live="polite">{downloadMessage}</span>
                   </div>
@@ -1209,7 +1250,7 @@ export default function Home() {
               </div>
             </div>
             <div className="coverage-kpis" aria-label="Iran ThermoCalc coverage summary">
-              <div><strong>3</strong><span>interactive educational proxy workflows</span></div>
+              <div><strong>4</strong><span>interactive local calculation workflows</span></div>
               <div><strong>6</strong><span>transparent binary systems</span></div>
               <div><strong>118</strong><span>element records</span></div>
               <div><strong>0</strong><span>proprietary datasets copied</span></div>
@@ -1245,7 +1286,7 @@ export default function Home() {
             </article>
             <article className="database-gap-card required">
               <span>Required for engineering</span><h2>Assessed CALPHAD layer</h2>
-              <ul><li>0 licensed TDB parameter sets currently bundled</li><li>0 mobility or kinetic databases</li><li>No multicomponent Gibbs-energy minimizer</li><li>No diffusion, precipitation, aqueous, or process solver</li></ul>
+              <ul><li>Local multicomponent screening engine is bundled</li><li>0 licensed TDB parameter sets currently bundled</li><li>No assessed multicomponent Gibbs-energy minimizer</li><li>No diffusion, precipitation, aqueous, or process solver</li></ul>
             </article>
             <article className="database-gap-card path">
               <span>Best next architecture</span><h2>Open solver integration</h2>
