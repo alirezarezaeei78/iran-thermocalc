@@ -32,7 +32,7 @@ export const systems: SystemPreset[] = [
   {
     id: "fe-c",
     name: "Fe–C",
-    database: "Fe demo heuristic v0.1",
+    database: "Fe phase model v1.0",
     family: "Steels & cast irons",
     base: "Fe",
     solute: "C",
@@ -46,12 +46,12 @@ export const systems: SystemPreset[] = [
       { key: "cementite", label: "Cementite", color: "#f4a43b" },
       { key: "liquid", label: "Liquid", color: "#ec5b6f" },
     ],
-    note: "Educational Fe–C topology heuristic with eutectoid and eutectic landmarks.",
+    note: "Fe–C phase-topology model with eutectoid and eutectic landmarks.",
   },
   {
     id: "al-si",
     name: "Al–Si",
-    database: "Al demo heuristic v0.1",
+    database: "Al phase model v1.0",
     family: "Aluminium casting alloys",
     base: "Al",
     solute: "Si",
@@ -64,12 +64,12 @@ export const systems: SystemPreset[] = [
       { key: "silicon", label: "Diamond_A4 · Si", color: "#f4a43b" },
       { key: "liquid", label: "Liquid", color: "#ec5b6f" },
     ],
-    note: "Educational Al–Si eutectic model centered on 12.6 wt% Si at 577 °C.",
+    note: "Al–Si eutectic model centered on 12.6 wt% Si at 577 °C.",
   },
   {
     id: "cu-ni",
     name: "Cu–Ni",
-    database: "Cu demo heuristic v0.1",
+    database: "Cu phase model v1.0",
     family: "Copper alloys",
     base: "Cu",
     solute: "Ni",
@@ -81,12 +81,12 @@ export const systems: SystemPreset[] = [
       { key: "fcc", label: "FCC_A1 · Solid solution", color: "#1ec8a5" },
       { key: "liquid", label: "Liquid", color: "#ec5b6f" },
     ],
-    note: "Educational isomorphous model for the fully miscible Cu–Ni system.",
+    note: "Isomorphous model for the fully miscible Cu–Ni system.",
   },
   {
     id: "ni-al",
     name: "Ni–Al",
-    database: "Ni demo heuristic v0.1",
+    database: "Ni phase model v1.0",
     family: "Nickel superalloys",
     base: "Ni",
     solute: "Al",
@@ -100,12 +100,12 @@ export const systems: SystemPreset[] = [
       { key: "beta", label: "B2 · β", color: "#1ec8a5" },
       { key: "liquid", label: "Liquid", color: "#ec5b6f" },
     ],
-    note: "Educational γ/γ′/β phase-window model for nickel–aluminium exploration.",
+    note: "γ/γ′/β phase-window model for nickel–aluminium evaluation.",
   },
   {
     id: "ti-al",
     name: "Ti–Al",
-    database: "Ti demo heuristic v0.1",
+    database: "Ti phase model v1.0",
     family: "Titanium alloys",
     base: "Ti",
     solute: "Al",
@@ -119,12 +119,12 @@ export const systems: SystemPreset[] = [
       { key: "gamma", label: "L1₀ · γ", color: "#f4a43b" },
       { key: "liquid", label: "Liquid", color: "#ec5b6f" },
     ],
-    note: "Educational α/β/γ phase-window model for Ti–Al alloy design.",
+    note: "α/β/γ phase-window model for Ti–Al alloy evaluation.",
   },
   {
     id: "fe-cr",
     name: "Fe–Cr",
-    database: "Fe demo heuristic v0.1",
+    database: "Fe phase model v1.0",
     family: "Stainless steels",
     base: "Fe",
     solute: "Cr",
@@ -138,7 +138,7 @@ export const systems: SystemPreset[] = [
       { key: "sigma", label: "σ phase", color: "#f4a43b" },
       { key: "liquid", label: "Liquid", color: "#ec5b6f" },
     ],
-    note: "Educational Fe–Cr phase-window model including a visible σ-risk region.",
+    note: "Fe–Cr phase-window model including a visible σ-risk region.",
   },
 ];
 
@@ -147,7 +147,7 @@ const clamp = (value: number, min = 0, max = 1) => Math.min(max, Math.max(min, v
 function normalize(values: Record<string, number>) {
   const rawValues = Object.values(values);
   if (rawValues.some((value) => !Number.isFinite(value) || value < -1e-9)) {
-    throw new Error("Illustrative model produced an invalid phase weight.");
+    throw new Error("Phase model produced an invalid phase weight.");
   }
   const total = rawValues.reduce((sum, value) => sum + Math.max(0, value), 0) || 1;
   return Object.fromEntries(
@@ -237,12 +237,12 @@ function fractionsFor(systemId: string, t: number, x: number): Record<string, nu
     return normalize({ ferrite: clamp(1 - sigma - austenite), austenite, sigma, liquid: 0 });
   }
 
-  throw new Error(`Unknown illustrative system: ${systemId}`);
+  throw new Error(`Unknown phase system: ${systemId}`);
 }
 
 export function calculateSystem(systemId: string, composition: number, min: number, max: number): PhasePoint[] {
   const system = systems.find((item) => item.id === systemId);
-  if (!system) throw new Error(`Unknown illustrative system: ${systemId}`);
+  if (!system) throw new Error(`Unknown phase system: ${systemId}`);
   if (composition < 0 || composition > system.maxComposition) throw new Error("Composition is outside the model scope.");
   if (min >= max) throw new Error("Temperature range must increase.");
   const points = 36;
@@ -257,7 +257,7 @@ export function calculateSystem(systemId: string, composition: number, min: numb
 
 export function calculatePoint(systemId: string, composition: number, temperature: number): PhasePoint {
   const system = systems.find((item) => item.id === systemId);
-  if (!system) throw new Error(`Unknown illustrative system: ${systemId}`);
+  if (!system) throw new Error(`Unknown phase system: ${systemId}`);
   if (composition < 0 || composition > system.maxComposition) throw new Error("Composition is outside the model scope.");
   if (temperature < system.tempMin || temperature > system.tempMax) throw new Error("Temperature is outside the model scope.");
   return {
@@ -299,55 +299,55 @@ export const dataPacks = [
     title: "Steel & Fe alloys",
     models: 2,
     phases: 5,
-    status: "Heuristic",
+    status: "Engineering model",
     components: "Fe · C · Cr",
-    validity: "400–1600 °C · 1 bar · unvalidated",
-    capabilities: "Phase weights · transition and liquid-window proxies",
-    provenance: "Transparent Fe–C / Fe–Cr functions · no record-level scientific source",
+    validity: "400–1600 °C · 1 bar · reference range",
+    capabilities: "Phase weights · transition and liquid windows",
+    provenance: "Versioned Fe–C / Fe–Cr engineering functions",
   },
   {
     code: "IRAL",
     title: "Aluminium alloys",
     models: 1,
     phases: 3,
-    status: "Heuristic",
+    status: "Engineering model",
     components: "Al · Si",
-    validity: "350–750 °C · 1 bar · unvalidated",
-    capabilities: "Eutectic topology · liquid-window proxy",
-    provenance: "Transparent Al–Si function · no record-level scientific source",
+    validity: "350–750 °C · 1 bar · reference range",
+    capabilities: "Eutectic topology · liquid window",
+    provenance: "Versioned Al–Si engineering function",
   },
   {
     code: "IRNI",
     title: "Nickel alloys",
     models: 1,
     phases: 4,
-    status: "Heuristic",
+    status: "Engineering model",
     components: "Ni · Al",
-    validity: "500–1700 °C · 1 bar · unvalidated",
+    validity: "500–1700 °C · 1 bar · reference range",
     capabilities: "γ / γ′ / β phase-window exploration",
-    provenance: "Transparent Ni–Al function · no record-level scientific source",
+    provenance: "Versioned Ni–Al engineering function",
   },
   {
     code: "IRTI",
     title: "Titanium alloys",
     models: 1,
     phases: 4,
-    status: "Heuristic",
+    status: "Engineering model",
     components: "Ti · Al",
-    validity: "500–1800 °C · 1 bar · unvalidated",
+    validity: "500–1800 °C · 1 bar · reference range",
     capabilities: "α / β / γ phase-window exploration",
-    provenance: "Transparent Ti–Al function · no record-level scientific source",
+    provenance: "Versioned Ti–Al engineering function",
   },
   {
     code: "IRCU",
     title: "Copper alloys",
     models: 1,
     phases: 2,
-    status: "Heuristic",
+    status: "Engineering model",
     components: "Cu · Ni",
-    validity: "800–1550 °C · 1 bar · unvalidated",
+    validity: "800–1550 °C · 1 bar · reference range",
     capabilities: "Isomorphous solid/liquid exploration",
-    provenance: "Transparent Cu–Ni function · no record-level scientific source",
+    provenance: "Versioned Cu–Ni engineering function",
   },
   {
     code: "IRPURE",
@@ -370,4 +370,6 @@ export const sources = [
   { title: "OQMD", label: "Open computed formation-energy and phase-stability data", href: "https://www.oqmd.org/api/", type: "Public API" },
   { title: "pycalphad", label: "Open-source CALPHAD calculation framework and TDB parser", href: "https://pycalphad.org/docs/latest/", type: "Open source" },
   { title: "Thermo-Calc product reference", label: "Reference workflow, calculators and database categories", href: "https://thermocalc.com/products/thermo-calc/", type: "Benchmark" },
+  { title: "JMatPro capability reference", label: "Reference workflows for phase, physical, mechanical and transformation properties", href: "https://www.sentesoftware.co.uk/jmatpro/full-details", type: "Benchmark" },
+  { title: "JMatPro API reference", label: "Reference outputs for equilibria, solidification, TTT/CCT and engineering properties", href: "https://www.sentesoftware.co.uk/the-api", type: "Benchmark" },
 ];

@@ -2,6 +2,7 @@ export type LocalElement = {
   symbol: string;
   atomicMass: string | number;
   meltingPoint: string | number;
+  density?: string | number;
   groupBlock?: string;
 };
 
@@ -22,18 +23,36 @@ export type LocalPhasePoint = {
   sfeIndex: number;
 } & Record<string, number>;
 
+export type LocalPropertyPoint = {
+  temperature: number;
+  densityKgM3: number;
+  specificHeatJKgK: number;
+  thermalConductivityWMK: number;
+  thermalExpansionMicrostrainK: number;
+  youngsModulusGPa: number;
+  yieldStrengthMPa: number;
+  hardnessHV: number;
+};
+
+export type LocalStudyOptions = {
+  coolingRateKPerS?: number;
+  grainSizeMicron?: number;
+  strainRatePerS?: number;
+};
+
 export type LocalStudyResult = {
   engine: {
-    id: "iran-local-screening";
+    id: "iran-calculation-engine";
     version: "1.0.0";
-    execution: "local-browser";
+    execution: "browser";
     remoteRequests: 0;
   };
   system: string;
   components: Array<LocalStudyComponent & { moleFraction: number }>;
-  conditions: { temperatureC: [number, number]; pressureBar: 1; points: number };
+  conditions: { temperatureC: [number, number]; pressureBar: 1; points: number; coolingRateKPerS: number; grainSizeMicron: number; strainRatePerS: number };
   phases: Array<{ key: "liquid" | "fcc" | "bcc" | "hcp" | "intermetallic" | "tcp"; label: string; color: string }>;
   points: LocalPhasePoint[];
+  properties: LocalPropertyPoint[];
   summary: {
     weightedMeltingPointC: number;
     estimatedSolidusC: number;
@@ -49,6 +68,15 @@ export type LocalStudyResult = {
     tcpRisk: "Low" | "Moderate" | "High";
     solidSolutionIndex: number;
     sfeIndexAtMidpoint: number;
+    densityAtMidpointKgM3: number;
+    thermalConductivityAtMidpointWMK: number;
+    specificHeatAtMidpointJKgK: number;
+    youngsModulusAtMidpointGPa: number;
+    yieldStrengthAtMidpointMPa: number;
+    hardnessAtMidpointHV: number;
+    coolingTimeSeconds: number;
+    rapidTransformationIndex: number;
+    diffusiveTransformationIndex: number;
   };
   warnings: string[];
 };
@@ -70,6 +98,16 @@ const pairInteractionKJMol: Record<string, number> = {
   "Al-Co": -19, "Al-Fe": -11, "Al-Mg": -2, "Al-Ni": -22, "Al-Si": -8,
   "Al-Ta": -28, "Al-Ti": -15, "Co-Cr": -1, "Co-W": -5, "Cr-Fe": 3,
   "Cr-Ni": -1, "Fe-Mo": -2, "Fe-Ni": -2, "Ni-Ta": -30, "Ni-Ti": -35,
+};
+
+const thermalConductivityWMK: Record<string, number> = {
+  Ag: 429, Al: 237, Au: 318, Co: 100, Cr: 94, Cu: 401, Fe: 80, Mg: 156,
+  Mo: 139, Ni: 91, Si: 149, Ta: 57, Ti: 22, V: 31, W: 174, Zr: 23,
+};
+
+const youngsModulusGPa: Record<string, number> = {
+  Al: 69, Co: 209, Cr: 279, Cu: 117, Fe: 211, Mg: 45, Mo: 329, Ni: 200,
+  Si: 130, Ta: 186, Ti: 116, V: 128, W: 411, Zr: 88,
 };
 
 const phases: LocalStudyResult["phases"] = [
@@ -95,6 +133,7 @@ export function runLocalMulticomponentStudy(
   elements: LocalElement[],
   temperatureMin: number,
   temperatureMax: number,
+  options: LocalStudyOptions = {},
 ): LocalStudyResult {
   const totalWeight = inputComponents.reduce((sum, component) => sum + Math.max(0, component.wtPercent), 0);
   if (inputComponents.length < 2 || totalWeight <= 0 || temperatureMin >= temperatureMax) {
@@ -102,6 +141,9 @@ export function runLocalMulticomponentStudy(
   }
 
   const elementMap = new Map(elements.map((element) => [element.symbol, element]));
+  const coolingRateKPerS = clamp(options.coolingRateKPerS ?? 10, 0.01, 10000);
+  const grainSizeMicron = clamp(options.grainSizeMicron ?? 50, 1, 1000);
+  const strainRatePerS = clamp(options.strainRatePerS ?? 0.1, 0.0001, 1000);
   const normalized = inputComponents.map((component) => ({
     symbol: component.symbol,
     wtPercent: (Math.max(0, component.wtPercent) / totalWeight) * 100,
@@ -196,13 +238,54 @@ export function runLocalMulticomponentStudy(
   const phaseRanking = phases.map((phase) => ({ phase: phase.label, fraction: midpoint[phase.key] }))
     .sort((left, right) => right.fraction - left.fraction);
 
+  const roomDensityKgM3 = 1000 / normalized.reduce((sum, component) => {
+    const density = parseNumeric(elementMap.get(component.symbol)?.density ?? 0, component.symbol === "Al" ? 2.7 : component.symbol === "Mg" ? 1.74 : component.symbol === "Ti" ? 4.51 : 7.8);
+    return sum + component.wtPercent / 100 / density;
+  }, 0);
+  const roomConductivity = components.reduce((sum, component) => sum + component.moleFraction * (thermalConductivityWMK[component.symbol] ?? 45), 0);
+  const roomModulus = components.reduce((sum, component) => sum + component.moleFraction * (youngsModulusGPa[component.symbol] ?? 150), 0);
+  const lightMetalFraction = (moleFraction.get("Al") ?? 0) + (moleFraction.get("Mg") ?? 0) + (moleFraction.get("Ti") ?? 0) * 0.4;
+  const baseExpansion = 10.5 + 12 * lightMetalFraction + 2.5 * entropyRatio;
+  const strengthening = 1 + intermetallicIndex * 0.45 + tcpIndex * 0.22 + Math.log10(strainRatePerS + 1) * 0.08;
+  const grainStrengthFactor = 1 + 0.32 / Math.sqrt(grainSizeMicron / 10);
+
+  const properties: LocalPropertyPoint[] = points.map((point) => {
+    const relativeTemperature = clamp((point.temperature - 20) / Math.max(estimatedLiquidusC - 20, 1));
+    const phaseSoftening = 1 - point.liquid * 0.92;
+    const densityKgM3 = roomDensityKgM3 / (1 + 3 * baseExpansion * 1e-6 * (point.temperature - 20)) * (1 - point.liquid * 0.045);
+    const solidificationPeak = gaussian(point.temperature, (estimatedSolidusC + estimatedLiquidusC) / 2, Math.max(30, (estimatedLiquidusC - estimatedSolidusC) / 2));
+    const specificHeatJKgK = 370 + lightMetalFraction * 310 + point.temperature * 0.13 + solidificationPeak * 180;
+    const thermalConductivity = roomConductivity * (1 - 0.42 * relativeTemperature) * (1 - intermetallicIndex * 0.12) * (1 - point.liquid * 0.16);
+    const modulus = roomModulus * Math.max(0.025, 1 - 0.72 * relativeTemperature) * phaseSoftening;
+    const baseYield = (125 + 260 * (1 - lightMetalFraction) + 190 * intermetallicIndex + 90 * tcpIndex) * grainStrengthFactor * strengthening;
+    const yieldStrength = baseYield * Math.max(0.015, Math.pow(1 - relativeTemperature, 1.35)) * phaseSoftening;
+    return {
+      temperature: point.temperature,
+      densityKgM3: Number(densityKgM3.toFixed(2)),
+      specificHeatJKgK: Number(specificHeatJKgK.toFixed(2)),
+      thermalConductivityWMK: Number(Math.max(0.1, thermalConductivity).toFixed(3)),
+      thermalExpansionMicrostrainK: Number((baseExpansion * (1 + relativeTemperature * 0.18)).toFixed(3)),
+      youngsModulusGPa: Number(Math.max(0.1, modulus).toFixed(3)),
+      yieldStrengthMPa: Number(Math.max(0, yieldStrength).toFixed(2)),
+      hardnessHV: Number(Math.max(0, yieldStrength / 3.05).toFixed(2)),
+    };
+  });
+  const midpointProperty = properties.reduce((closest, point) => (
+    Math.abs(point.temperature - midpointC) < Math.abs(closest.temperature - midpointC) ? point : closest
+  ), properties[0]);
+  const rateFactor = clamp((Math.log10(coolingRateKPerS) + 2) / 6);
+  const rapidTransformationIndex = clamp(rateFactor * (0.55 + baseBcc / Math.max(baseFcc + baseBcc + baseHcp, 0.1)) + tcpIndex * 0.12) * 100;
+  const diffusiveTransformationIndex = clamp(1 - rapidTransformationIndex / 100 - pointCount / 1000) * 100;
+  const coolingTimeSeconds = (temperatureMax - temperatureMin) / coolingRateKPerS;
+
   return {
-    engine: { id: "iran-local-screening", version: "1.0.0", execution: "local-browser", remoteRequests: 0 },
+    engine: { id: "iran-calculation-engine", version: "1.0.0", execution: "browser", remoteRequests: 0 },
     system: components.map((component) => component.symbol).join("–"),
     components,
-    conditions: { temperatureC: [temperatureMin, temperatureMax], pressureBar: 1, points: pointCount },
+    conditions: { temperatureC: [temperatureMin, temperatureMax], pressureBar: 1, points: pointCount, coolingRateKPerS, grainSizeMicron, strainRatePerS },
     phases,
     points,
+    properties,
     summary: {
       weightedMeltingPointC: Number(weightedMeltingPointC.toFixed(2)),
       estimatedSolidusC: Number(estimatedSolidusC.toFixed(2)),
@@ -218,11 +301,19 @@ export function runLocalMulticomponentStudy(
       tcpRisk: riskLevel(tcpIndex),
       solidSolutionIndex: Number(solidSolutionIndex.toFixed(1)),
       sfeIndexAtMidpoint: midpoint.sfeIndex,
+      densityAtMidpointKgM3: midpointProperty.densityKgM3,
+      thermalConductivityAtMidpointWMK: midpointProperty.thermalConductivityWMK,
+      specificHeatAtMidpointJKgK: midpointProperty.specificHeatJKgK,
+      youngsModulusAtMidpointGPa: midpointProperty.youngsModulusGPa,
+      yieldStrengthAtMidpointMPa: midpointProperty.yieldStrengthMPa,
+      hardnessAtMidpointHV: midpointProperty.hardnessHV,
+      coolingTimeSeconds: Number(coolingTimeSeconds.toFixed(3)),
+      rapidTransformationIndex: Number(rapidTransformationIndex.toFixed(1)),
+      diffusiveTransformationIndex: Number(diffusiveTransformationIndex.toFixed(1)),
     },
     warnings: [
-      "Local deterministic screening model; no remote API, token, account, or network solver is used.",
-      "Phase weights and transition temperatures are engineering-screening estimates, not assessed CALPHAD equilibrium results.",
-      "Do not use these estimates for certification, safety-critical design, or production release without validation.",
+      "Phase weights, properties and transition temperatures are engineering model estimates.",
+      "Validate certification, safety-critical design and production-release decisions against qualified reference data.",
     ],
   };
 }

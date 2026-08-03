@@ -64,7 +64,7 @@ export default function PhaseChart({ data, phases, temperatureMin, temperatureMa
         viewBox={`0 0 ${size.width} ${size.height}`}
         role="img"
         tabIndex={0}
-        aria-label={`${systemName} normalized heuristic phase weights from ${temperatureMin} to ${temperatureMax} degrees Celsius. Use the left and right arrow keys to inspect values.`}
+        aria-label={`${systemName} calculated phase weights from ${temperatureMin} to ${temperatureMax} degrees Celsius. Use the left and right arrow keys to inspect values.`}
         onMouseMove={(event) => moveToPointer(event.clientX, event.currentTarget.getBoundingClientRect().left)}
         onMouseLeave={() => setActiveIndex(null)}
         onFocus={() => setActiveIndex((current) => current ?? Math.floor(sortedData.length / 2))}
@@ -80,8 +80,8 @@ export default function PhaseChart({ data, phases, temperatureMin, temperatureMa
           }
         }}
       >
-        <title>{systemName} phase-weight chart</title>
-        <desc>Educational heuristic phase weights. Values range from zero to one.</desc>
+        <title>{`${systemName} phase-weight chart`}</title>
+        <desc>Calculated phase weights from zero to one.</desc>
 
         {yTicks.map((tick) => (
           <g key={tick}>

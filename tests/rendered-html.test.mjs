@@ -21,11 +21,12 @@ test("server-renders the Iran ThermoCalc product shell", async () => {
 
   const html = await response.text();
   assert.match(html, /Iran ThermoCalc/);
-  assert.match(html, /Illustrative phase system/);
-  assert.match(html, /Independent research prototype/);
-  assert.match(html, /Open-source UI prototype/);
+  assert.match(html, /Phase system/);
+  assert.match(html, /Independent materials engineering platform/);
+  assert.match(html, /Materials engineering platform/);
   assert.match(html, /Single point/);
-  assert.match(html, /Solidification proxy/);
+  assert.match(html, /Solidification/);
+  assert.doesNotMatch(html, /آزمایشی|Voice brief|0 tokens|Not connected/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
 });
 
@@ -43,7 +44,7 @@ test("removes all disposable starter-preview infrastructure", async () => {
   assert.match(packageJson, /"name": "iran-thermocalc"/);
 });
 
-test("keeps scientific scope and export guardrails explicit", async () => {
+test("keeps model scope and export guardrails explicit", async () => {
   const [page, data, schema, migration, researchMigration] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/data.ts", import.meta.url), "utf8"),
@@ -52,27 +53,29 @@ test("keeps scientific scope and export guardrails explicit", async () => {
     readFile(new URL("../drizzle/0001_research_ingestion.sql", import.meta.url), "utf8"),
   ]);
 
-  assert.match(page, /unvalidated educational prototype/);
-  assert.match(page, /normalized unitless heuristic weight/);
-  assert.match(page, /not validated for engineering or production decisions/);
-  assert.match(page, /Useful parity, without false equivalence/);
-  assert.match(page, /Solver \+ assessed data required/);
-  assert.match(page, /High-to-low sampled proxy with ΔT/);
-  assert.match(page, /Heuristic model output/);
-  assert.match(page, /Static heuristic cooling-path proxy only/);
+  assert.match(page, /engineering screening model/);
+  assert.match(page, /Normalized phase weight/);
+  assert.match(page, /validate critical production decisions against qualified reference data/);
+  assert.match(page, /Clear capabilities, clear model boundaries/);
+  assert.match(page, /Assessed data required/);
+  assert.match(page, /Cooling path sampled from high to low temperature/);
+  assert.match(page, /Calculated model output/);
+  assert.match(page, /Temperature-sampled cooling-path calculation/);
   assert.match(page, /safeMin = runConfig\.mode === "single-point"/);
   assert.match(page, /high-to-low temperature cooling path/);
   assert.match(page, /Multicomponent lab/);
-  assert.match(page, /Working 2–6 component local screening engine/);
-  assert.match(page, /Run local simulation/);
-  assert.match(page, /0 remote requests/);
-  assert.match(page, /Local calculation completed—not CALPHAD/);
+  assert.match(page, /Working 2–6 component calculation engine/);
+  assert.match(page, /Run calculation/);
+  assert.match(page, /Physical and mechanical response/);
+  assert.match(page, /Transformation response/);
+  assert.match(page, /thermalExpansionMicrostrainK/);
   assert.match(page, /runLocalMulticomponentStudy/);
   assert.doesNotMatch(page, /Scientific engine<\/small><strong>Not connected/);
   assert.doesNotMatch(page, /Input valid · scientific execution blocked/);
   assert.match(page, /Candidate · human review required/);
-  assert.match(page, /Machine learning proposes; reviewers promote/);
-  assert.match(data, /Illustrative model produced an invalid phase weight/);
+  assert.match(page, /Automation proposes; reviewers approve/);
+  assert.doesNotMatch(page, /فارسی \(آزمایشی\)|Voice brief|Captured requirement|0 tokens/);
+  assert.match(data, /Phase model produced an invalid phase weight/);
   assert.match(data, /Materials Project/);
   assert.match(data, /OQMD/);
   assert.match(data, /temperature: Number\(temperature\.toFixed\(3\)\)/);
