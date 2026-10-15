@@ -21,6 +21,7 @@
 # misc
 .DS_Store
 *.pem
+.xattr-test/
 
 # debug
 npm-debug.log*
@@ -36,7 +37,11 @@ yarn-error.log*
 
 # typescript
 next-env.d.ts
+*.tsbuildinfo
 /dist/
 /.wrangler/
 /outputs/
 /work/
+
+# generated Drizzle metadata
+/drizzle/meta/

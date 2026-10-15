@@ -108,7 +108,9 @@ const server = createServer(async (incoming, outgoing) => {
 
 server.on("error", (error) => {
   if (error?.code === "EADDRINUSE") {
-    console.error(`\nPort ${port} is already in use. Close the other preview or run: PORT=3001 npm run dev\n`);
+    console.error(
+      `\nPort ${port} is already in use. macOS/Linux: PORT=3001 npm run dev. Windows PowerShell: $env:PORT=3001; npm run dev.\n`,
+    );
   } else {
     console.error("\nIran ThermoCalc could not start:", error?.message || error, "\n");
   }
@@ -121,7 +123,7 @@ const localAddress = Object.values(networkInterfaces())
 
 server.listen(port, host, () => {
   console.log("\nIran ThermoCalc is running:\n");
-  console.log(`  This Mac:   http://localhost:${port}`);
+  console.log(`  This computer: http://localhost:${port}`);
   if (localAddress) console.log(`  Same Wi-Fi: http://${localAddress}:${port}`);
   console.log("\nPress Control+C to stop.\n");
 });
